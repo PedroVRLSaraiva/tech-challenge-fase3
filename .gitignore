@@ -15,6 +15,9 @@ venv/
 # SO
 .DS_Store
 
+# Worktrees isolados (superpowers:using-git-worktrees)
+.worktrees/
+
 # Dados grandes/sensíveis (ajustar conforme necessário)
 data/*
 !data/.gitkeep
