@@ -1,7 +1,7 @@
 pandas
 numpy
 scipy
-scikit-learn
+scikit-learn>=1.2
 shap
 matplotlib
 seaborn
@@ -9,3 +9,4 @@ jupyter
 google-cloud-bigquery
 google-cloud-bigquery-storage
 db-dtypes
+pytest
