@@ -1,7 +1,11 @@
 pandas
 numpy
+scipy
 scikit-learn
 shap
 matplotlib
 seaborn
 jupyter
+google-cloud-bigquery
+google-cloud-bigquery-storage
+db-dtypes
