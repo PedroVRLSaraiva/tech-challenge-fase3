@@ -1,0 +1,19 @@
+CLAUDE.local.md
+.claude/
+FIAP - Tech Challenge - Fase 2 copy/
+raw/
+input/
+
+# Python
+__pycache__/
+*.pyc
+venv/
+.venv/
+.ipynb_checkpoints/
+
+# SO
+.DS_Store
+
+# Dados grandes/sensíveis (ajustar conforme necessário)
+data/*
+!data/.gitkeep
