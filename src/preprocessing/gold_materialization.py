@@ -30,9 +30,9 @@ MAPEAMENTO_REDE = {
 
 # Rede usada como referência para enriquecimento territorial: evita fanout
 # (indicador_por_municipio tem várias linhas por município/ano, uma por
-# rede) e é a mesma rede de referência já usada na EDA (H2) para comparar
-# regiões de forma consistente.
-REDE_REFERENCIA_TERRITORIO = "Pública (Estadual e Municipal)"
+# rede). Escolhida como "Municipal" (não a mesma da EDA/H2) porque é a única
+# rede com gap_meta_resultado e meta_alfabetizacao_2024 populadas no Gold real.
+REDE_REFERENCIA_TERRITORIO = "Municipal"
 
 COLUNAS_TERRITORIO = [
     "id_municipio", "ano", "sigla_uf", "regiao",
@@ -64,22 +64,38 @@ def preparar_territorio_por_ano(indicador_municipio: pd.DataFrame) -> pd.DataFra
 
 def enriquecer_alunos(alunos: pd.DataFrame, territorio_por_ano: pd.DataFrame) -> pd.DataFrame:
     """Filtra alunos presentes, mapeia rede, e junta com o território do ano
-    ANTERIOR ao ano do aluno (evita vazar o resultado do próprio período)."""
+    ANTERIOR ao ano do aluno quando esse ano existir na Gold — evita vazar o
+    resultado do próprio período. Quando o ano anterior não existir na Gold
+    (ex.: aluno de 2023 precisaria de território de 2022, que a Gold real
+    não tem — só cobre 2023/2024), cai para o MESMO ano do aluno como
+    fallback. Essa é uma concessão deliberada a uma limitação real de dado
+    (só 2 anos existem no total): o vazamento potencial do fallback (usar
+    o agregado municipal do mesmo ano/período) é diluído entre
+    centenas/milhares de alunos do município naquele ano — categoricamente
+    diferente do vazamento de `proficiencia` (definição determinística do
+    target individual, ~100% de concordância). Só afeta o cohort de
+    desenvolvimento (2023 nesta versão dos dados); o cohort de 2024 sempre
+    usa o ano anterior de verdade (2023), sem fallback."""
     alunos_presentes = alunos[alunos["presenca"] == "1"].copy()
     alunos_presentes["rede"] = alunos_presentes["rede"].map(MAPEAMENTO_REDE)
     alunos_presentes["alfabetizado"] = alunos_presentes["alfabetizado"].astype(int)
     alunos_presentes["ano"] = alunos_presentes["ano"].astype("int64")
-    alunos_presentes["ano_anterior"] = alunos_presentes["ano"] - 1
+
+    ano_minimo_disponivel = territorio_por_ano["ano"].min()
+    ano_anterior = alunos_presentes["ano"] - 1
+    alunos_presentes["ano_referencia"] = ano_anterior.where(
+        ano_anterior >= ano_minimo_disponivel, alunos_presentes["ano"]
+    )
 
     territorio_renomeado = territorio_por_ano.rename(columns={
-        "ano": "ano_anterior",
+        "ano": "ano_referencia",
         "taxa_alfabetizacao": "taxa_alfabetizacao_ano_anterior",
         "gap_meta_resultado": "gap_meta_resultado_ano_anterior",
         "meta_alfabetizacao_2024": "meta_alfabetizacao_ano_anterior",
     })
 
     enriquecido = alunos_presentes.merge(
-        territorio_renomeado, on=["id_municipio", "ano_anterior"], how="left",
+        territorio_renomeado, on=["id_municipio", "ano_referencia"], how="left",
     )
     return enriquecido[COLUNAS_FINAIS_ENRIQUECIDO].reset_index(drop=True)
 

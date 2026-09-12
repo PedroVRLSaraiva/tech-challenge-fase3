@@ -15,10 +15,10 @@ def _indicador_municipio_fake() -> pd.DataFrame:
         "id_municipio": ["3550308", "3550308", "3550308", "1200401"],
         "ano": [2022, 2023, 2023, 2023],
         "rede": [
-            "Pública (Estadual e Municipal)",
-            "Pública (Estadual e Municipal)",
+            "Municipal",
+            "Municipal",
             "Privada",
-            "Pública (Estadual e Municipal)",
+            "Municipal",
         ],
         "sigla_uf": ["SP", "SP", "SP", "AC"],
         "taxa_alfabetizacao": [70.0, 75.0, 90.0, 60.0],
@@ -87,6 +87,42 @@ def test_enriquecer_alunos_filtra_ausentes_mapeia_rede_e_junta_ano_anterior():
         "meta_alfabetizacao_ano_anterior",
     }
     assert colunas_esperadas.issubset(set(resultado.columns))
+
+
+def test_enriquecer_alunos_fallback_para_ano_mesmo_quando_anterior_nao_disponivel():
+    """Quando o ano anterior do aluno não existe na Gold (ex.: Gold só tem 2023,
+    aluno é de 2023, precisaria de 2022), deve fazer fallback para o MESMO ano.
+    Isso garante que o aluno não fique com features nulas quando há cobertura
+    no ano corrente."""
+    # Fixture: Gold apenas com 2023 (ano_minimo = 2023)
+    territorio_minimalista = pd.DataFrame({
+        "id_municipio": ["3550308"],
+        "ano": [2023],
+        "sigla_uf": ["SP"],
+        "regiao": ["Sudeste"],
+        "taxa_alfabetizacao": [75.0],
+        "gap_meta_resultado": [-2.0],
+        "meta_alfabetizacao_2024": [80.0],
+    })
+
+    # Aluno de 2023 no mesmo município
+    alunos_2023 = pd.DataFrame({
+        "id_aluno": ["A_test"],
+        "ano": [2023],
+        "id_municipio": ["3550308"],
+        "rede": ["5"],
+        "presenca": ["1"],
+        "alfabetizado": ["1"],
+    })
+
+    resultado = enriquecer_alunos(alunos_2023, territorio_minimalista)
+
+    # Sem fallback, A_test teria taxas nulas (join ao ano_anterior=2022 não existe).
+    # Com fallback, A_test pega dados de ano=2023 (ano_referencia=2023).
+    linha_a_test = resultado.set_index("id_aluno").loc["A_test"]
+    assert linha_a_test["taxa_alfabetizacao_ano_anterior"] == 75.0
+    assert linha_a_test["gap_meta_resultado_ano_anterior"] == -2.0
+    assert linha_a_test["meta_alfabetizacao_ano_anterior"] == 80.0
 
 
 class _FakeQueryJob:
