@@ -23,16 +23,18 @@ negócio relevantes para políticas públicas — não apenas maximizar métrica
 
 ## Descrição da base utilizada
 
-Base construída na camada **Gold** do pipeline da Fase 3 (ver
-[`FIAP - Tech Challenge - Fase 2 copy`](../FIAP%20-%20Tech%20Challenge%20-%20Fase%202%20copy)),
-dataset BigQuery `gold_alfabetizacao`, com as tabelas:
+Base construída na camada **Gold** do pipeline da Fase 2 (`FIAP - Tech
+Challenge - Fase 2`, um repositório irmão deste, fora do escopo deste
+repositório), dataset BigQuery `gold_alfabetizacao`, com as tabelas:
 
 - `indicador_por_municipio` — Indicador Criança Alfabetizada por município;
 - `comparacao_meta_resultado` — metas nacionais/estaduais/municipais vs. resultado real;
 - `evolucao_temporal` — evolução temporal do indicador.
 
-Poderá ser enriquecida com fontes externas: IBGE, Censo Escolar, FUNDEB,
-PNAD, Atlas do Desenvolvimento Humano, Cadastro Único.
+O enunciado do desafio lista fontes externas potenciais de enriquecimento
+(IBGE, Censo Escolar, FUNDEB, PNAD, Atlas do Desenvolvimento Humano,
+Cadastro Único); nenhuma delas foi incorporada nesta rodada — ver
+"Limitações do projeto" e "Possíveis evoluções futuras" para o porquê.
 
 A tabela efetivamente usada para treinar o modelo não é nenhuma das três
 acima diretamente — é uma tabela nova, materializada especificamente para
@@ -50,10 +52,9 @@ justificar `class_weight="balanced"` nos modelos e o uso de PR-AUC como
 critério de seleção (ver "Escolha do algoritmo"), mas não tão extremo a
 ponto de exigir técnicas de reamostragem.
 
-Nenhuma fonte externa (IBGE, Censo Escolar, FUNDEB, PNAD, Atlas do
-Desenvolvimento Humano) foi incorporada nesta rodada — decisão registrada
-na EDA e mantida deliberadamente fora de escopo (ver "Possíveis evoluções
-futuras").
+Essa decisão de não incorporar fontes externas nesta rodada foi registrada
+já na EDA e mantida deliberadamente fora de escopo (ver "Limitações do
+projeto" e "Possíveis evoluções futuras").
 
 ## Etapas de modelagem
 
@@ -76,7 +77,7 @@ Resumo do que foi construído:
    "Limitações do projeto".
 2. **Split temporal, não aleatório.** Dentro de 2023, os dados são
    divididos 70% treino / 15% validação / 15% teste, estratificados por
-   `alfabetizado`. Em número de linhas: **treino 1.052.140** / **validação
+   `em_risco`. Em número de linhas: **treino 1.052.140** / **validação
    225.459** / **teste-2023 225.459** — os três com `em_risco` = 41,62%,
    idêntico ao da população de 2023 antes do split, o que confirma que a
    estratificação está funcionando (não é só uma alegação, é uma checagem
@@ -119,18 +120,19 @@ minoria extrema (aqui, ~41% da base). Resultado da corrida:
 
 | modelo | PR-AUC (validação) |
 |---|---|
-| **hist_gradient_boosting** | **0,5963** |
-| regressão logística | 0,5947 |
-| random forest | 0,5912 |
+| **hist_gradient_boosting** | **0,5980** |
+| regressão logística | 0,5958 |
+| random forest | 0,5925 |
 
 O `HistGradientBoostingClassifier` venceu, mas por margem pequena — a
-diferença entre o 1º e o 3º colocado é de apenas ~0,005 em PR-AUC. Vale
-registrar que essas três últimas casas decimais oscilam ligeiramente entre
-execuções (a consulta ao BigQuery não fixa a ordem das linhas retornadas,
-o que desloca minimamente o `train_test_split` mesmo com seed fixa), mas o
-vencedor e a conclusão — corrida acirrada entre os três candidatos, sem um
-modelo claramente dominante — se mantiveram estáveis em todas as
-execuções observadas.
+diferença entre o 1º e o 3º colocado é de apenas ~0,006 em PR-AUC. A
+consulta ao BigQuery usa `ORDER BY id_aluno, ano` explícito justamente
+para que essa comparação — e todo o restante do notebook — seja
+reprodutível: sem uma ordenação fixa, `SELECT *` no BigQuery retorna as
+linhas em ordem arbitrária a cada execução, o que deslocaria o resultado
+de `train_test_split` mesmo com seed fixa. O vencedor e a conclusão —
+corrida acirrada entre os três candidatos, sem um modelo claramente
+dominante — são os números desta execução reprodutível.
 
 ## Métricas de avaliação
 
@@ -141,25 +143,30 @@ de 2024 inteiro (*out-of-time*, um ano que o modelo nunca viu):
 
 | conjunto | ROC-AUC | PR-AUC |
 |---|---|---|
-| Teste-2023 (mesmo ano) | 0,6899 | 0,5991 |
-| 2024 (out-of-time) | 0,6386 | 0,5275 |
+| Teste-2023 (mesmo ano) | 0,6878 | 0,5962 |
+| 2024 (out-of-time) | 0,6388 | 0,5277 |
 
 Há uma queda real de desempenho de 2023 para 2024 (~0,05 em ROC-AUC, ~0,07
 em PR-AUC) — investigada na seção "Insights encontrados" abaixo, onde
-mostramos que a causa é uma mudança na composição dos dados de entrada, não
-uma falha do modelo em si.
+mostramos que a causa principal é uma mudança na composição dos dados de
+entrada (covariate shift), com um co-fator adicional discutido em
+"Limitações do projeto".
 
 Como a decisão de classificar um aluno como "em risco" depende de um
 limiar sobre a probabilidade prevista, e a escolha desse limiar é uma
 decisão de política pública (quanto o gestor está disposto a errar para o
-lado de "alarme falso" vs. "caso perdido"), reportamos três cenários sobre
-o conjunto de 2024, em vez de travar um único limiar "oficial":
+lado de "alarme falso" vs. "caso perdido"), reportamos três cenários. Os
+limiares são **escolhidos na validação** (nunca olhando para o teste-2024,
+para não contaminar a única avaliação final com uma escolha feita a
+partir dela) e depois aplicados, uma única vez, ao conjunto de 2024 — a
+tabela abaixo mostra o limiar escolhido e a precisão/recall resultante
+nesse teste:
 
-| cenário | limiar | precisão | recall |
+| cenário | limiar (escolhido na validação) | precisão em 2024 | recall em 2024 |
 |---|---|---|---|
-| padrão (0,5) | 0,500 | 0,489 | 0,638 |
-| otimizado para F1 | 0,361 | 0,439 | 0,912 |
-| recall-prioritário (≥80%) | 0,430 | 0,460 | 0,800 |
+| padrão (0,5) | 0,500 | 0,483 | 0,665 |
+| otimizado para F1 | 0,392 | 0,445 | 0,869 |
+| recall-prioritário (≥80%) | 0,434 | 0,461 | 0,796 |
 
 Ver a leitura de negócio dessa tabela em "Aplicação prática para políticas
 públicas".
@@ -172,13 +179,13 @@ transformadas):
 
 | feature | importância |
 |---|---|
-| `taxa_alfabetizacao_ano_anterior` | 0,549 |
-| `rede_Estadual` | 0,031 |
-| `gap_meta_resultado_ano_anterior` | 0,030 |
-| `rede_Municipal` | 0,017 |
-| `meta_alfabetizacao_ano_anterior` | 0,013 |
+| `taxa_alfabetizacao_ano_anterior` | 0,562 |
+| `rede_Estadual` | 0,037 |
+| `meta_alfabetizacao_ano_anterior` | 0,029 |
+| `gap_meta_resultado_ano_anterior` | 0,024 |
+| `rede_Municipal` | 0,013 |
+| `regiao_Sudeste` | 0,012 |
 | `regiao_Nordeste` | 0,010 |
-| `regiao_Sudeste` | 0,007 |
 
 ![Importância de features](reports/importancia_features.png)
 ![Curva precisão-recall](reports/curva_precisao_recall.png)
@@ -186,7 +193,7 @@ transformadas):
 
 **Leitura em termos simples:** uma única variável — a taxa histórica de
 alfabetização do próprio município no ano anterior — responde por mais de
-metade do poder preditivo do modelo (0,549 de importância, contra 0,031 da
+metade do poder preditivo do modelo (0,562 de importância, contra 0,037 da
 segunda colocada). Isso significa que o fator individual mais forte para
 prever se *um aluno específico* será alfabetizado não é uma característica
 pessoal daquele aluno, e sim o quão bem o município onde ele estuda já vem
@@ -201,13 +208,13 @@ com peso bem menor.
 ## Insights encontrados
 
 **1. Existe um gap real de generalização temporal.** O ROC-AUC cai de
-0,6899 (teste-2023, mesmo ano de treino) para 0,6386 (2024, ano nunca
+0,6878 (teste-2023, mesmo ano de treino) para 0,6388 (2024, ano nunca
 visto) — uma queda de ~0,05, com uma queda proporcional maior em PR-AUC
-(0,5991 → 0,5275). Isso por si só não diz se o modelo "aprendeu errado" ou
+(0,5962 → 0,5277). Isso por si só não diz se o modelo "aprendeu errado" ou
 se o mundo mudou entre 2023 e 2024; por isso, antes de aceitar o número,
 rodamos um diagnóstico de variação temporal.
 
-**2. O diagnóstico aponta covariate shift, não falha de modelo.** Um teste
+**2. O diagnóstico aponta covariate shift como causa principal.** Um teste
 de Kolmogorov-Smirnov confirma que as 3 features numéricas mudaram de
 distribuição de forma estatisticamente significativa entre 2023 e 2024
 (p ≈ 0,0 nas três). O achado mais revelador está nas categóricas:
@@ -222,6 +229,21 @@ não uma mudança real no comportamento educacional dos alunos — o modelo
 não "piorou": ele está vendo, em 2024, uma população parcialmente
 diferente (mais representativa de SP) daquela em que foi treinado, e essa
 mudança de composição explica boa parte da queda de métrica observada.
+
+**3. Um co-fator provável: a diluição do vazamento fraco do fallback de
+ano em 2023.** A explicação de covariate shift acima não é a história
+completa. Como "Limitações do projeto" detalha, o cohort de treino/teste
+de 2023 se beneficia de um vazamento fraco e diluído: como 2023 não tem
+um "ano anterior" real na Gold, a materialização usa o indicador
+territorial do **mesmo ano** do aluno como fallback — e essa é justamente
+a feature dominante do modelo, `taxa_alfabetizacao_ano_anterior` (0,562
+de importância, mais da metade do total). Em 2024, o "ano anterior" é
+genuinamente 2023 (sem fallback, sem essa vantagem). Ou seja: parte da
+queda de 2023 para 2024 é provavelmente o desaparecimento mecânico dessa
+vantagem otimista do fallback, não apenas covariate shift — as duas
+explicações não são mutuamente exclusivas, e não temos, com os dois anos
+de dado disponíveis, como isolar quanto cada uma contribui para o gap
+observado.
 
 ## Limitações do projeto
 
@@ -274,8 +296,8 @@ não alfabetização — e, agregando essas probabilidades por município, gerar
 um **ranking de municípios prioritários** para ação. A tabela completa
 está em [`reports/risco_por_municipio_2024.csv`](reports/risco_por_municipio_2024.csv);
 no topo do ranking de 2024 aparecem casos como o município de
-`id_municipio` 1718501 (risco médio de 0,947 entre 48 alunos), 1718006
-(0,942 entre 47 alunos) e 1715705 (0,942 entre 81 alunos) — municípios onde
+`id_municipio` 2919900 (risco médio de 0,944 entre 40 alunos), 1718501
+(0,942 entre 48 alunos) e 2205581 (0,935 entre 55 alunos) — municípios onde
 quase a totalidade dos alunos avaliados está classificada como em risco de
 não atingir o patamar de alfabetização esperado. Esse tipo de ranking é
 diretamente acionável: em vez de distribuir recursos (formação de
@@ -287,17 +309,18 @@ A tabela de limiares (seção "Métricas de avaliação") existe justamente
 para dar ao gestor público — não ao modelo — o controle sobre um trade-off
 que é uma decisão de política, não uma decisão técnica:
 
-- **Limiar recall-prioritário (recall ≥ 80%):** captura 8 em cada 10 alunos
-  realmente em risco, ao custo de uma precisão menor (46%) — ou seja, entre
-  os alunos sinalizados, quase metade não estava de fato em risco. Faz
-  sentido quando o custo de "deixar passar" um caso real é alto (ex.: uma
-  política de reforço escolar barata e escalável, onde é aceitável incluir
-  alguns alunos que não precisariam).
-- **Limiar padrão (0,5):** um meio-termo (63,8% de recall, 48,9% de
-  precisão).
+- **Limiar recall-prioritário (limiar escolhido para recall ≥ 80% na
+  validação):** aplicado ao teste-2024, captura ~80% dos alunos realmente
+  em risco (recall 79,6%), ao custo de uma precisão menor (46,1%) — ou
+  seja, entre os alunos sinalizados, mais da metade não estava de fato em
+  risco. Faz sentido quando o custo de "deixar passar" um caso real é alto
+  (ex.: uma política de reforço escolar barata e escalável, onde é
+  aceitável incluir alguns alunos que não precisariam).
+- **Limiar padrão (0,5):** um meio-termo (66,5% de recall, 48,3% de
+  precisão em 2024).
 - **Limiar otimizado para F1:** maximiza o equilíbrio entre as duas
-  métricas (91,2% de recall, 43,9% de precisão) — captura quase todos os
-  casos de risco, mas com a menor precisão das três opções.
+  métricas (86,9% de recall, 44,5% de precisão em 2024) — captura quase
+  todos os casos de risco, mas com a menor precisão das três opções.
 
 Em outras palavras: quanto mais o gestor prioriza **não deixar nenhum caso
 de risco passar despercebido**, mais recursos serão direcionados também a
@@ -317,14 +340,22 @@ política, não com o modelo.
   regional (Kruskal-Wallis), mas uma análise não-supervisionada dedicada
   (ex.: k-means ou clusterização hierárquica sobre indicadores municipais)
   daria uma resposta mais completa e seria um ciclo de trabalho próprio.
-- **Tornar o fallback de ano mais robusto**: hoje a checagem de
-  disponibilidade do ano anterior usa o mínimo global da tabela de
-  território, não uma checagem por município — funciona corretamente com
-  os dados atuais (só 2023/2024, cobertura uniforme), mas deixaria de
-  funcionar corretamente se uma carga futura tiver municípios reportando
-  com atraso (cobertura não-uniforme entre municípios). O fix correto seria
-  checar disponibilidade por `(id_municipio, ano)` em vez do mínimo global
-  — registrado aqui para não se perder quando o dado crescer.
+- **Relatório de completude de cobertura territorial**, não mudar o
+  fallback de ano: hoje a checagem de disponibilidade do ano anterior usa
+  o mínimo global da tabela de território, não uma checagem por
+  município — e isso é intencional, não uma limitação a corrigir. Uma
+  checagem por `(id_municipio, ano)` pareceria "mais precisa", mas na
+  prática faria o fallback de mesmo-ano disparar com mais frequência para
+  municípios que reportam com atraso em cargas futuras (cobertura
+  não-uniforme entre municípios) — injetando *mais* do vazamento fraco e
+  diluído que "Limitações do projeto" já discute, não menos. O mínimo
+  global é a escolha conservadora: quando falta dado de território para
+  um município/ano, essas colunas ficam `NULL` (capturadas pelo
+  `SimpleImputer(add_indicator=True)`), que é o modo de falha seguro
+  contra vazamento. Uma evolução genuinamente útil aqui seria um
+  **relatório de completude** (quais municípios/anos não têm dado de
+  território disponível) para tornar essa lacuna visível, sem tocar na
+  lógica do fallback em si.
 - **Monitoramento e retreino periódico**, uma vez que mais anos de Gold
   estejam disponíveis — permitiria confirmar se o gap de generalização
   observado entre 2023→2024 é uma tendência recorrente (mudança de

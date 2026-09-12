@@ -1,7 +1,7 @@
 pandas
 numpy
 scipy
-scikit-learn>=1.2
+scikit-learn>=1.4
 shap
 matplotlib
 seaborn

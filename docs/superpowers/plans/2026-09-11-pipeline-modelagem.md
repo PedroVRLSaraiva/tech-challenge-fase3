@@ -15,7 +15,7 @@ sintéticos — sem depender de BigQuery real nos testes. Um notebook final
 (`notebooks/02_preprocessing_e_modelagem.ipynb`) importa essas funções e
 orquestra a execução real contra o BigQuery, documentando o raciocínio.
 
-**Tech Stack:** Python (venv do projeto), pandas, scikit-learn >= 1.2, scipy,
+**Tech Stack:** Python (venv do projeto), pandas, scikit-learn >= 1.4, scipy,
 shap, matplotlib, google-cloud-bigquery, pytest (novo).
 
 **Spec:** `docs/superpowers/specs/2026-09-11-pipeline-modelagem-design.md`
@@ -24,7 +24,7 @@ shap, matplotlib, google-cloud-bigquery, pytest (novo).
 
 - Rodar tudo com o Python do venv do projeto: `venv/bin/python3` /
   `venv/bin/python3 -m pytest`.
-- `scikit-learn >= 1.2` (necessário para `class_weight` em
+- `scikit-learn >= 1.4` (necessário para `class_weight` em
   `HistGradientBoostingClassifier` e `sparse_output` em `OneHotEncoder`) —
   fixar em `requirements.txt`.
 - Testes unitários nunca chamam BigQuery de verdade — toda função que faz
