@@ -26,8 +26,8 @@ def test_selecionar_melhor_modelo_escolhe_maior_pr_auc_na_validacao():
     y_validacao = pd.Series([0, 0, 1, 1, 1])
 
     candidatos = {
-        "perfeito": _PipelineFalsa([0.01, 0.02, 0.9, 0.95, 0.99]),   # combina com y quase exatamente
         "aleatorio": _PipelineFalsa([0.5, 0.5, 0.5, 0.5, 0.5]),      # não discrimina nada
+        "perfeito": _PipelineFalsa([0.01, 0.02, 0.9, 0.95, 0.99]),   # combina com y quase exatamente
     }
 
     X_treino = pd.DataFrame({"x": range(10)})
