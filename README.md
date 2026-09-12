@@ -43,6 +43,13 @@ Gold no momento desta análise). Ela une os microdados públicos de aluno
 (fonte `basedosdados.br_inep_avaliacao_alfabetizacao.alunos`) com o
 território/meta do município vindo de `indicador_por_municipio`.
 
+A classe de interesse (`em_risco`, aluno não alfabetizado) é moderadamente
+desbalanceada e estável entre os dois anos: **40,86%** no geral, sendo
+**41,62%** em 2023 e **40,25%** em 2024 — desbalanceamento suficiente para
+justificar `class_weight="balanced"` nos modelos e o uso de PR-AUC como
+critério de seleção (ver "Escolha do algoritmo"), mas não tão extremo a
+ponto de exigir técnicas de reamostragem.
+
 Nenhuma fonte externa (IBGE, Censo Escolar, FUNDEB, PNAD, Atlas do
 Desenvolvimento Humano) foi incorporada nesta rodada — decisão registrada
 na EDA e mantida deliberadamente fora de escopo (ver "Possíveis evoluções
@@ -69,13 +76,18 @@ Resumo do que foi construído:
    "Limitações do projeto".
 2. **Split temporal, não aleatório.** Dentro de 2023, os dados são
    divididos 70% treino / 15% validação / 15% teste, estratificados por
-   `alfabetizado`. O ano de **2024 inteiro** é reservado como um segundo
-   teste, *out-of-time* — nunca usado em treino ou ajuste de
-   hiperparâmetros. A motivação é simular a pergunta real de negócio: o
-   modelo treinado com dados de um ano consegue generalizar para o ano
-   seguinte, ou só decorou padrões específicos de 2023? Um split aleatório
-   comum (embaralhar tudo e separar 80/20) não responderia essa pergunta,
-   porque deixaria linhas de 2024 vazarem para o treino.
+   `alfabetizado`. Em número de linhas: **treino 1.052.140** / **validação
+   225.459** / **teste-2023 225.459** — os três com `em_risco` = 41,62%,
+   idêntico ao da população de 2023 antes do split, o que confirma que a
+   estratificação está funcionando (não é só uma alegação, é uma checagem
+   verificável). O ano de **2024 inteiro** (**1.852.788 linhas**,
+   `em_risco` = 40,25%) é reservado como um segundo teste, *out-of-time* —
+   nunca usado em treino ou ajuste de hiperparâmetros. A motivação é
+   simular a pergunta real de negócio: o modelo treinado com dados de um
+   ano consegue generalizar para o ano seguinte, ou só decorou padrões
+   específicos de 2023? Um split aleatório comum (embaralhar tudo e
+   separar 80/20) não responderia essa pergunta, porque deixaria linhas de
+   2024 vazarem para o treino.
 3. **Pré-processamento integrado ao modelo**, via
    `sklearn.pipeline.Pipeline` + `ColumnTransformer`: as features numéricas
    (`meta_alfabetizacao_ano_anterior`, `gap_meta_resultado_ano_anterior`,
