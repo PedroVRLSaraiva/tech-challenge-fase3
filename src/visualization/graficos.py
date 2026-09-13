@@ -35,3 +35,23 @@ def plot_importancia_features(nomes_features, importancias, top_n: int = 15):
     eixo.set_title(f"Top {top_n} features mais importantes")
     fig.tight_layout()
     return fig
+
+
+def plot_calibracao(tabela_calibracao):
+    """Compara probabilidade média prevista com taxa real observada por
+    faixa — a linha de referência diagonal (y=x) representa calibração
+    perfeita ('quando o modelo diz X% de risco, X% dos casos são risco de
+    verdade')."""
+    fig, eixo = plt.subplots(figsize=(6, 6))
+    eixo.plot([0, 1], [0, 1], linestyle="--", color="gray", label="Calibração perfeita")
+    eixo.plot(
+        tabela_calibracao["probabilidade_media_prevista"],
+        tabela_calibracao["taxa_real_observada"],
+        marker="o", label="Modelo",
+    )
+    eixo.set_xlabel("Probabilidade média prevista")
+    eixo.set_ylabel("Taxa real observada")
+    eixo.set_title("Curva de calibração (2024)")
+    eixo.legend()
+    fig.tight_layout()
+    return fig

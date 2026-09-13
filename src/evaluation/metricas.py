@@ -16,15 +16,46 @@ def calcular_metricas_teste(pipeline, X, y) -> dict:
     }
 
 
-def _precisao_recall_em_limiar(y, probabilidades, limiar: float) -> tuple[float, float]:
-    predito = (probabilidades >= limiar).astype(int)
+def matriz_confusao_em_limiar(y, probabilidades, limiar: float) -> dict:
+    """Contagens de verdadeiro/falso positivo/negativo para um limiar de
+    decisão — a comparação direta 'real vs. previsto' por trás de qualquer
+    métrica derivada (precisão, recall, F1)."""
+    predito = (np.asarray(probabilidades) >= limiar).astype(int)
     y = np.asarray(y)
-    verdadeiro_positivo = int(((predito == 1) & (y == 1)).sum())
-    falso_positivo = int(((predito == 1) & (y == 0)).sum())
-    falso_negativo = int(((predito == 0) & (y == 1)).sum())
+    return {
+        "verdadeiro_positivo": int(((predito == 1) & (y == 1)).sum()),
+        "falso_positivo": int(((predito == 1) & (y == 0)).sum()),
+        "verdadeiro_negativo": int(((predito == 0) & (y == 0)).sum()),
+        "falso_negativo": int(((predito == 0) & (y == 1)).sum()),
+    }
+
+
+def _precisao_recall_em_limiar(y, probabilidades, limiar: float) -> tuple[float, float]:
+    matriz = matriz_confusao_em_limiar(y, probabilidades, limiar)
+    verdadeiro_positivo = matriz["verdadeiro_positivo"]
+    falso_positivo = matriz["falso_positivo"]
+    falso_negativo = matriz["falso_negativo"]
     precisao = verdadeiro_positivo / (verdadeiro_positivo + falso_positivo) if (verdadeiro_positivo + falso_positivo) else 0.0
     recall = verdadeiro_positivo / (verdadeiro_positivo + falso_negativo) if (verdadeiro_positivo + falso_negativo) else 0.0
     return precisao, recall
+
+
+def tabela_calibracao(y, probabilidades, n_faixas: int = 10) -> pd.DataFrame:
+    """Divide as probabilidades previstas em faixas (por padrão, decis) e
+    compara, em cada faixa, a probabilidade média prevista com a taxa real
+    observada de em_risco — mede se 'o modelo diz X% de risco' corresponde
+    de fato a uma frequência real de ~X% naquela faixa."""
+    dados = pd.DataFrame({"y": np.asarray(y), "probabilidade": np.asarray(probabilidades)})
+    dados["faixa"] = pd.qcut(dados["probabilidade"], q=n_faixas, duplicates="drop")
+    return (
+        dados.groupby("faixa", observed=True)
+        .agg(
+            probabilidade_media_prevista=("probabilidade", "mean"),
+            taxa_real_observada=("y", "mean"),
+            n_alunos=("y", "count"),
+        )
+        .reset_index()
+    )
 
 
 def tabela_limiares(pipeline, X, y, recall_alvo: float = 0.8) -> pd.DataFrame:

@@ -1,8 +1,13 @@
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 
-from src.visualization.graficos import plot_curva_precisao_recall, plot_importancia_features
+from src.visualization.graficos import (
+    plot_calibracao,
+    plot_curva_precisao_recall,
+    plot_importancia_features,
+)
 
 
 class _PipelineFalsa:
@@ -43,4 +48,21 @@ def test_plot_importancia_features_lida_com_menos_features_que_top_n():
 
     eixo = fig.axes[0]
     assert len(eixo.patches) == 3
+    plt.close(fig)
+
+
+def test_plot_calibracao_retorna_figure_com_uma_linha_por_faixa():
+    tabela = pd.DataFrame({
+        "faixa": ["0-50%", "50-100%"],
+        "probabilidade_media_prevista": [0.2, 0.8],
+        "taxa_real_observada": [0.25, 0.75],
+        "n_alunos": [100, 100],
+    })
+
+    fig = plot_calibracao(tabela)
+
+    assert isinstance(fig, matplotlib.figure.Figure)
+    eixo = fig.axes[0]
+    # uma linha de calibração (dados) + uma linha de referência diagonal
+    assert len(eixo.lines) >= 2
     plt.close(fig)

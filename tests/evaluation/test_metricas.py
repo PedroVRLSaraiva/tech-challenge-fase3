@@ -1,6 +1,11 @@
 import numpy as np
 
-from src.evaluation.metricas import calcular_metricas_teste, tabela_limiares
+from src.evaluation.metricas import (
+    calcular_metricas_teste,
+    matriz_confusao_em_limiar,
+    tabela_calibracao,
+    tabela_limiares,
+)
 
 
 class _PipelineFalsa:
@@ -41,3 +46,44 @@ def test_tabela_limiares_encontra_o_limiar_perfeito_para_f1():
 
     linha_padrao = tabela.set_index("cenario").loc["padrao (limiar 0.5)"]
     assert linha_padrao["limiar"] == 0.5
+
+
+def test_matriz_confusao_em_limiar_conta_os_quatro_casos_corretamente():
+    # y = [0,0,1,1,1], previsto (limiar 0.5) = [0,1,0,1,1]
+    y = np.array([0, 0, 1, 1, 1])
+    probabilidades = np.array([0.2, 0.6, 0.3, 0.7, 0.8])
+
+    matriz = matriz_confusao_em_limiar(y, probabilidades, limiar=0.5)
+
+    assert matriz == {
+        "verdadeiro_positivo": 2,  # índices 3,4
+        "falso_positivo": 1,       # índice 1
+        "verdadeiro_negativo": 1,  # índice 0
+        "falso_negativo": 1,       # índice 2
+    }
+
+
+def test_tabela_calibracao_reflete_probabilidade_prevista_igual_a_taxa_real():
+    # Duas faixas bem separadas: metade das linhas com probabilidade ~0.1
+    # e taxa real 0.1 (1 em 10 é em_risco), metade com ~0.9 e taxa real 0.9.
+    rng = np.random.default_rng(0)
+    n_por_faixa = 200
+    y_baixo = rng.binomial(1, 0.1, n_por_faixa)
+    y_alto = rng.binomial(1, 0.9, n_por_faixa)
+    y = np.concatenate([y_baixo, y_alto])
+    probabilidades = np.concatenate([
+        np.full(n_por_faixa, 0.1), np.full(n_por_faixa, 0.9),
+    ])
+
+    tabela = tabela_calibracao(y, probabilidades, n_faixas=2)
+
+    assert len(tabela) == 2
+    assert set(tabela.columns) == {
+        "faixa", "probabilidade_media_prevista", "taxa_real_observada", "n_alunos",
+    }
+    tabela_ordenada = tabela.sort_values("probabilidade_media_prevista").reset_index(drop=True)
+    assert tabela_ordenada.loc[0, "probabilidade_media_prevista"] == 0.1
+    assert abs(tabela_ordenada.loc[0, "taxa_real_observada"] - 0.1) < 0.06
+    assert tabela_ordenada.loc[1, "probabilidade_media_prevista"] == 0.9
+    assert abs(tabela_ordenada.loc[1, "taxa_real_observada"] - 0.9) < 0.06
+    assert tabela["n_alunos"].sum() == 400
