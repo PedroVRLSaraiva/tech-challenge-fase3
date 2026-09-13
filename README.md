@@ -171,6 +171,47 @@ nesse teste:
 Ver a leitura de negócio dessa tabela em "Aplicação prática para políticas
 públicas".
 
+## Comparação real vs. previsto (2024)
+
+As métricas agregadas acima (ROC-AUC, PR-AUC, precisão/recall) resumem a
+qualidade do modelo em um número, mas não mostram de forma direta "o
+modelo previu X, a realidade foi Y" — a comparação mais concreta para
+avaliar a capacidade real do modelo. Duas visões complementares:
+
+**Matrizes de confusão em 2024**, para os três limiares escolhidos na
+validação:
+
+| cenário | verdadeiro positivo | falso positivo | falso negativo | verdadeiro negativo |
+|---|---|---|---|---|
+| padrão (0,500) | 495.985 | 531.832 | 249.684 | 575.287 |
+| otimizado para F1 (0,392) | 647.798 | 807.143 | 97.871 | 299.976 |
+| recall-prioritário (0,434) | 593.458 | 695.130 | 152.211 | 411.989 |
+
+Em **todos** os três cenários, o número de falsos positivos supera o de
+verdadeiros positivos — um primeiro sinal de que o modelo alarma mais do
+que deveria em 2024.
+
+**Curva de calibração**: divide as probabilidades previstas em 10 faixas
+e compara a probabilidade média prevista com a taxa real observada em
+cada faixa — responde "quando o modelo diz 70% de risco, isso corresponde
+a uma frequência real de ~70%, ou o modelo está sistematicamente
+otimista/pessimista?":
+
+![Curva de calibração 2024](reports/calibracao_2024.png)
+
+O modelo fica **sistematicamente abaixo da diagonal de calibração
+perfeita** em toda a faixa de probabilidade — quando ele diz "50% de
+risco", a taxa real observada é de só ~38%; quando diz "75%", a taxa real
+é ~62%. O desvio cresce quanto maior a probabilidade prevista. Ou seja: o
+modelo está **descalibrado por superestimação** em 2024, não apenas "um
+pouco menos preciso" — as probabilidades previstas servem bem para
+**ranquear** risco relativo entre alunos/municípios, mas não devem ser
+lidas literalmente como "chance real de acontecer" nesse ano. Essa
+descalibração é consistente com as duas causas discutidas em "Insights
+encontrados" (covariate shift + vazamento fraco do fallback de 2023): o
+modelo aprendeu, em 2023, um nível de risco "de base" mais alto do que o
+que 2024 de fato apresenta.
+
 ## Interpretação dos resultados
 
 Importância nativa de features do modelo vencedor (complementada por SHAP
@@ -245,6 +286,16 @@ explicações não são mutuamente exclusivas, e não temos, com os dois anos
 de dado disponíveis, como isolar quanto cada uma contribui para o gap
 observado.
 
+**4. A descalibração por superestimação (ver "Comparação real vs.
+previsto") é mais uma evidência a favor dessa mesma história.** Se o
+modelo apenas tivesse perdido poder de discriminação em 2024 (menos
+capacidade de separar quem está e quem não está em risco), esperaríamos
+uma queda de ROC-AUC/PR-AUC sem um viés sistemático de direção. O que se
+observa — o modelo superestimando risco de forma consistente e crescente
+com a probabilidade prevista — é exatamente o padrão esperado quando um
+"nível de base" aprendido em 2023 (parcialmente inflado pelo vazamento do
+fallback) deixa de valer em 2024.
+
 ## Limitações do projeto
 
 - **A Gold só tem 2 anos de dado (2023 e 2024).** Isso limita a validação
@@ -288,22 +339,46 @@ observado.
   futuro" para "prever o passado"); remover as features territoriais
   defasadas (reduziria demais o escopo de interpretabilidade, que é uma
   das perguntas de negócio centrais do desafio).
+- **O modelo está descalibrado por superestimação em 2024** (ver
+  "Comparação real vs. previsto"): a probabilidade prevista é
+  sistematicamente maior que a taxa real observada, e o desvio cresce nas
+  faixas de probabilidade mais alta. Na prática, isso significa que o
+  **ranking** de risco entre municípios/alunos é a leitura confiável do
+  modelo — comparar quem está em risco relativo a quem — mas o **valor
+  numérico** da probabilidade não deve ser lido como uma estimativa
+  calibrada de frequência real nesse ano específico.
 
 ## Aplicação prática para políticas públicas
 
 O modelo permite estimar, para cada aluno, uma probabilidade de risco de
 não alfabetização — e, agregando essas probabilidades por município, gerar
 um **ranking de municípios prioritários** para ação. A tabela completa
-está em [`reports/risco_por_municipio_2024.csv`](reports/risco_por_municipio_2024.csv);
-no topo do ranking de 2024 aparecem casos como o município de
-`id_municipio` 2919900 (risco médio de 0,944 entre 40 alunos), 1718501
-(0,942 entre 48 alunos) e 2205581 (0,935 entre 55 alunos) — municípios onde
-quase a totalidade dos alunos avaliados está classificada como em risco de
-não atingir o patamar de alfabetização esperado. Esse tipo de ranking é
-diretamente acionável: em vez de distribuir recursos (formação de
-professores, material didático, reforço escolar) de forma uniforme entre
-todos os municípios, um gestor estadual ou federal pode priorizar onde o
-modelo indica maior concentração de risco.
+está em [`reports/risco_por_municipio_2024.csv`](reports/risco_por_municipio_2024.csv),
+e — por causa da descalibração encontrada na seção "Comparação real vs.
+previsto" — ela traz o risco **previsto** e o risco **real observado**
+lado a lado, não só a previsão isolada:
+
+| município | risco previsto | risco real (2024) | leitura |
+|---|---|---|---|
+| 2919900 | 0,944 | 0,875 | boa concordância — risco alto confirmado |
+| 1718501 | 0,942 | 0,500 | superestimado — risco real é moderado, não extremo |
+| 2205581 | 0,935 | 0,545 | superestimado |
+| 1717800 | 0,932 | 0,548 | superestimado |
+| 1718006 | 0,932 | 0,617 | superestimado, mas ainda o 2º maior risco real da lista |
+
+Isso muda a leitura prática do ranking: o município 2919900 é o único, entre
+os cinco de maior risco *previsto*, onde a previsão e a realidade
+praticamente coincidem — os outros quatro têm risco real bem menor que o
+previsto, ainda que continuem acima da média geral (40,25% em 2024). Um
+gestor que for usar esse ranking para alocar recursos deve tratar a coluna
+`risco_previsto` como um **ordenador** (quem priorizar primeiro), e
+conferir a coluna `risco_real` — quando disponível, como neste caso
+retrospectivo de 2024 — antes de dimensionar o tamanho da intervenção.
+Esse tipo de ranking ainda é diretamente acionável: em vez de distribuir
+recursos (formação de professores, material didático, reforço escolar) de
+forma uniforme entre todos os municípios, um gestor estadual ou federal
+pode priorizar onde o modelo indica maior concentração de risco relativo —
+com a ressalva de calibração acima.
 
 A tabela de limiares (seção "Métricas de avaliação") existe justamente
 para dar ao gestor público — não ao modelo — o controle sobre um trade-off
