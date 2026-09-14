@@ -60,6 +60,16 @@ def tabela_calibracao(y, probabilidades, n_faixas: int = 10) -> pd.DataFrame:
 
 def tabela_limiares(pipeline, X, y, recall_alvo: float = 0.8) -> pd.DataFrame:
     probabilidades = pipeline.predict_proba(X)[:, 1]
+    return tabela_limiares_de_probabilidades(probabilidades, y, recall_alvo=recall_alvo)
+
+
+def tabela_limiares_de_probabilidades(probabilidades, y, recall_alvo: float = 0.8) -> pd.DataFrame:
+    """Mesma lógica de tabela_limiares, mas recebendo probabilidades já
+    calculadas em vez de (pipeline, X) — permite usar probabilidades
+    out-of-fold (cross_val_predict) para calibrar limiares sem vazamento,
+    quando o modelo final já foi refitado no pool inteiro de desenvolvimento
+    e não sobra um X 'não visto' para chamar predict_proba."""
+    probabilidades = np.asarray(probabilidades)
     precisao, recall, limiares = precision_recall_curve(y, probabilidades)
     # precisao/recall têm 1 elemento a mais que limiares (o último ponto, sem
     # limiar correspondente, representa 'classificar tudo como negativo').

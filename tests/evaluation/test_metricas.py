@@ -1,10 +1,12 @@
 import numpy as np
+import pandas as pd
 
 from src.evaluation.metricas import (
     calcular_metricas_teste,
     matriz_confusao_em_limiar,
     tabela_calibracao,
     tabela_limiares,
+    tabela_limiares_de_probabilidades,
 )
 
 
@@ -46,6 +48,22 @@ def test_tabela_limiares_encontra_o_limiar_perfeito_para_f1():
 
     linha_padrao = tabela.set_index("cenario").loc["padrao (limiar 0.5)"]
     assert linha_padrao["limiar"] == 0.5
+
+
+def test_tabela_limiares_de_probabilidades_bate_com_tabela_limiares():
+    """tabela_limiares(pipeline, X, y, ...) é um wrapper fino sobre
+    tabela_limiares_de_probabilidades — precisam concordar exatamente.
+    A versão de probabilidades existe para permitir calcular limiares em
+    cima de probabilidades out-of-fold (cross_val_predict), quando não há
+    um pipeline já treinado + X para chamar predict_proba (ver seleção de
+    modelo por validação cruzada)."""
+    y = np.array([0, 0, 0, 1, 1, 1, 1, 1])
+    probabilidades = np.array([0.1, 0.3, 0.35, 0.4, 0.5, 0.6, 0.8, 0.9])
+
+    tabela_direta = tabela_limiares_de_probabilidades(probabilidades, y, recall_alvo=0.8)
+    tabela_via_pipeline = tabela_limiares(_PipelineFalsa(probabilidades), X=None, y=y, recall_alvo=0.8)
+
+    pd.testing.assert_frame_equal(tabela_direta, tabela_via_pipeline)
 
 
 def test_matriz_confusao_em_limiar_conta_os_quatro_casos_corretamente():
