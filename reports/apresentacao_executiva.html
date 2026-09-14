@@ -1,0 +1,748 @@
+<title>Prever Para Prevenir</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --surface: #1a1a19;
+    --surface-raised: #232321;
+    --ink-primary: #ffffff;
+    --ink-secondary: #c3c2b7;
+    --ink-muted: #898781;
+    --hairline: #2c2c2a;
+    --baseline: #383835;
+    --brand: #9085e9;
+    --brand-dim: #4a3aa7;
+    --data-blue: #3987e5;
+    --data-orange: #d95926;
+    --data-aqua: #199e70;
+    --risk-critical: #d03b3b;
+    --risk-serious: #ec835a;
+    --good: #0ca30c;
+    --font-display: "Fraunces", Georgia, serif;
+    --font-body: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    background: var(--surface);
+    color: var(--ink-primary);
+    font-family: var(--font-body);
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    overflow: hidden;
+  }
+
+  body { position: relative; }
+
+  .eyebrow {
+    font-family: var(--font-body);
+    font-size: 0.72rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--brand);
+    font-weight: 600;
+    margin: 0 0 clamp(10px, 2vh, 20px) 0;
+  }
+
+  h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; margin: 0; }
+
+  /* ---------- deck scaffold ---------- */
+  .deck {
+    display: flex;
+    width: 100dvw;
+    height: 100dvh;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scroll-snap-type: x mandatory;
+    scroll-behavior: smooth;
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .deck::-webkit-scrollbar { display: none; }
+
+  .slide {
+    flex: 0 0 100dvw;
+    width: 100dvw;
+    height: 100dvh;
+    scroll-snap-align: start;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    padding: clamp(20px, 5vh, 64px) clamp(20px, 6vw, 96px);
+    gap: clamp(16px, 3vh, 32px);
+  }
+
+  .slide-inner {
+    width: 100%;
+    max-width: 1040px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: clamp(14px, 2.6vh, 28px);
+  }
+
+  .slide-kicker-num {
+    position: absolute;
+    top: clamp(16px, 3vh, 28px);
+    left: clamp(20px, 4vw, 48px);
+    font-size: 0.7rem;
+    color: var(--ink-muted);
+    letter-spacing: 0.1em;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ---------- nav chrome ---------- */
+  .progress-track {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    background: var(--hairline);
+    z-index: 30;
+  }
+  .progress-fill {
+    height: 100%;
+    width: 0%;
+    background: var(--brand);
+    transition: width 0.35s ease;
+  }
+
+  .dots {
+    position: fixed;
+    bottom: clamp(14px, 3vh, 28px);
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 8px;
+    z-index: 30;
+    padding: 8px 14px;
+    background: rgba(35,35,33,0.6);
+    border: 1px solid var(--hairline);
+    border-radius: 999px;
+    backdrop-filter: blur(6px);
+  }
+  .dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--baseline);
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    transition: background 0.25s ease, width 0.25s ease;
+  }
+  .dot:hover { background: var(--ink-secondary); }
+  .dot.active { background: var(--brand); width: 20px; border-radius: 4px; }
+
+  .nav-arrow {
+    position: fixed;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 30;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    border: 1px solid var(--hairline);
+    background: rgba(35,35,33,0.55);
+    color: var(--ink-secondary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    opacity: 0.55;
+    transition: opacity 0.2s ease, background 0.2s ease, color 0.2s ease;
+  }
+  .nav-arrow:hover { opacity: 1; background: var(--surface-raised); color: var(--ink-primary); }
+  .nav-arrow.prev { left: clamp(10px, 2vw, 28px); }
+  .nav-arrow.next { right: clamp(10px, 2vw, 28px); }
+  .nav-arrow:focus-visible, .dot:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+  @media (max-width: 640px) { .nav-arrow { display: none; } }
+
+  /* ---------- typographic pieces ---------- */
+  .headline { font-size: clamp(2.1rem, 5.4vw, 4.4rem); font-weight: 600; line-height: 1.05; color: var(--ink-primary); }
+  .subhead { font-size: clamp(1rem, 1.7vw, 1.3rem); color: var(--ink-secondary); font-weight: 400; max-width: 46ch; margin: 0 auto; line-height: 1.5; }
+  .stat-figure { font-family: var(--font-display); font-size: clamp(3.6rem, 11vw, 8rem); font-weight: 600; line-height: 1; color: var(--ink-primary); font-variant-numeric: proportional-nums; }
+  .stat-label { font-size: clamp(0.95rem, 1.5vw, 1.15rem); color: var(--ink-secondary); max-width: 40ch; }
+  .caption { font-size: 0.82rem; color: var(--ink-muted); max-width: 50ch; margin: 0 auto; }
+
+  /* ---------- reusable chart bits ---------- */
+  .chart-wrap { width: 100%; max-width: 760px; }
+  .chart-wrap svg { width: 100%; height: auto; display: block; overflow: visible; }
+  text.axis-label { font-family: var(--font-body); font-size: 12px; fill: var(--ink-muted); }
+  text.value-label { font-family: var(--font-body); font-size: 13px; fill: var(--ink-primary); font-weight: 600; font-variant-numeric: tabular-nums; }
+  text.mark-label { font-family: var(--font-body); font-size: 13px; fill: var(--ink-secondary); }
+  .legend { display: flex; gap: 20px; justify-content: center; flex-wrap: wrap; font-size: 0.8rem; color: var(--ink-secondary); margin-top: 4px; }
+  .legend-item { display: flex; align-items: center; gap: 7px; }
+  .legend-swatch { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+
+  /* bar grow-in */
+  .bar-rect { transform-origin: bottom; transform: scaleY(0); animation: growUp 0.7s cubic-bezier(.2,.8,.2,1) forwards; }
+  @keyframes growUp { to { transform: scaleY(1); } }
+  .fade-in { opacity: 0; animation: fadeIn 0.6s ease forwards; }
+  @keyframes fadeIn { to { opacity: 1; } }
+  .draw-in { stroke-dasharray: var(--len, 600); stroke-dashoffset: var(--len, 600); animation: drawLine 1.1s cubic-bezier(.3,.7,.3,1) forwards; }
+  @keyframes drawLine { to { stroke-dashoffset: 0; } }
+  .pop-in { opacity: 0; transform: scale(0.6); animation: popIn 0.5s cubic-bezier(.3,1.4,.4,1) forwards; }
+  @keyframes popIn { to { opacity: 1; transform: scale(1); } }
+  .ring-fill { animation: ringFill 1.3s cubic-bezier(.3,.7,.3,1) forwards; }
+  @keyframes ringFill { to { stroke-dashoffset: 446; } }
+
+  .slide:not(.is-active) .bar-rect,
+  .slide:not(.is-active) .fade-in,
+  .slide:not(.is-active) .draw-in,
+  .slide:not(.is-active) .pop-in { animation: none; opacity: 0; }
+  .slide:not(.is-active) .bar-rect { transform: scaleY(0); }
+  .slide:not(.is-active) .draw-in { stroke-dashoffset: var(--len, 600); }
+  .slide:not(.is-active) .ring-fill { animation: none; stroke-dashoffset: 754; }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+  }
+
+  /* icon row */
+  .icon-row { display: flex; gap: clamp(20px, 4vw, 56px); justify-content: center; flex-wrap: wrap; margin-top: 8px; }
+  .icon-card { display: flex; flex-direction: column; align-items: center; gap: 12px; width: 170px; }
+  .icon-circle { width: 76px; height: 76px; border-radius: 50%; background: var(--surface-raised); border: 1px solid var(--hairline); display: flex; align-items: center; justify-content: center; }
+  .icon-card h3 { font-size: 1rem; font-weight: 600; color: var(--ink-primary); font-family: var(--font-body); }
+  .icon-card p { font-size: 0.82rem; color: var(--ink-muted); margin: 0; line-height: 1.4; }
+
+  /* two-box compare */
+  .compare-row { display: flex; gap: clamp(14px, 3vw, 32px); width: 100%; max-width: 800px; flex-wrap: wrap; justify-content: center; }
+  .compare-box { flex: 1 1 300px; background: var(--surface-raised); border: 1px solid var(--hairline); border-radius: 16px; padding: clamp(20px, 3vw, 32px); text-align: left; }
+  .compare-box.dim { opacity: 0.62; }
+  .compare-box h3 { font-family: var(--font-body); font-size: 1.05rem; font-weight: 600; margin-bottom: 10px; display: flex; align-items: center; gap: 10px; }
+  .compare-box p { font-size: 0.9rem; color: var(--ink-secondary); line-height: 1.5; margin: 0; }
+
+  /* contour background */
+  .contour-bg { position: absolute; inset: 0; overflow: hidden; z-index: 0; pointer-events: none; }
+  .contour-bg svg { position: absolute; top: 50%; left: 50%; width: 160%; height: 160%; transform: translate(-50%, -50%); opacity: 0.16; }
+  .contour-bg path { fill: none; stroke: var(--brand); stroke-width: 1; }
+  .drift { animation: drift 60s linear infinite; }
+  @keyframes drift { from { transform: translate(-50%, -50%) rotate(0deg); } to { transform: translate(-50%, -50%) rotate(360deg); } }
+
+  .z1 { position: relative; z-index: 1; }
+
+  footer.brandline { font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-muted); }
+</style>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+
+<button class="nav-arrow prev" id="prevBtn" aria-label="Slide anterior">
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M15 5l-7 7 7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+</button>
+<button class="nav-arrow next" id="nextBtn" aria-label="Próximo slide">
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M9 5l7 7-7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+</button>
+
+<nav class="dots" id="dots" role="tablist" aria-label="Navegação dos slides"></nav>
+
+<main class="deck" id="deck">
+
+  <!-- 1. CAPA -->
+  <section class="slide" data-title="Capa">
+    <div class="contour-bg">
+      <svg viewBox="0 0 800 800" class="drift">
+        <path d="M-50 300 Q 200 250 400 320 T 850 280"/>
+        <path d="M-50 380 Q 220 340 420 400 T 850 360"/>
+        <path d="M-50 460 Q 180 410 380 470 T 850 440"/>
+        <path d="M-50 540 Q 240 500 430 550 T 850 520"/>
+        <path d="M-50 220 Q 190 180 390 240 T 850 200"/>
+      </svg>
+    </div>
+    <div class="slide-inner z1">
+      <p class="eyebrow fade-in" style="animation-delay:.05s">Apresentação executiva · Tech Challenge Fase 3</p>
+      <h1 class="headline fade-in" style="animation-delay:.15s">Prever para<br>prevenir</h1>
+      <p class="subhead fade-in" style="animation-delay:.3s">Um modelo preditivo para identificar, com antecedência, onde a alfabetização infantil corre mais risco no Brasil.</p>
+    </div>
+  </section>
+
+  <!-- 2. O PROBLEMA -->
+  <section class="slide" data-title="O problema">
+    <div class="slide-inner">
+      <p class="eyebrow">O problema</p>
+      <div class="chart-wrap" style="max-width:340px">
+        <svg viewBox="0 0 300 300" role="img" aria-label="40,86% dos alunos avaliados não estão alfabetizados">
+          <circle cx="150" cy="150" r="120" fill="none" stroke="var(--hairline)" stroke-width="22"/>
+          <circle class="ring-fill" cx="150" cy="150" r="120" fill="none" stroke="var(--risk-critical)" stroke-width="22"
+                  stroke-linecap="round" stroke-dasharray="308 754" stroke-dashoffset="754"
+                  transform="rotate(-90 150 150)"/>
+          <text x="150" y="142" text-anchor="middle" class="stat-figure" style="font-size:54px" fill="var(--ink-primary)">40,9%</text>
+          <text x="150" y="172" text-anchor="middle" class="axis-label" style="font-size:13px">não alfabetizados</text>
+        </svg>
+      </div>
+      <p class="subhead">Dos 3,36 milhões de alunos avaliados em 2023–2024, quase metade ainda não atingiu o nível esperado de leitura.</p>
+    </div>
+  </section>
+
+  <!-- 3. PERGUNTA DE NEGÓCIO -->
+  <section class="slide" data-title="Pergunta">
+    <div class="slide-inner">
+      <p class="eyebrow">A pergunta</p>
+      <div class="chart-wrap" style="max-width:220px">
+        <svg viewBox="0 0 200 200">
+          <circle class="pop-in" style="animation-delay:.1s" cx="100" cy="100" r="60" fill="none" stroke="var(--brand)" stroke-width="2" opacity="0.35"/>
+          <circle class="pop-in" style="animation-delay:.25s" cx="100" cy="100" r="42" fill="none" stroke="var(--brand)" stroke-width="2" opacity="0.55"/>
+          <circle class="pop-in" style="animation-delay:.4s" cx="100" cy="100" r="24" fill="var(--brand)"/>
+          <path class="pop-in" style="animation-delay:.55s" d="M100 100 L100 40" stroke="var(--brand)" stroke-width="3" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <h2 class="headline" style="font-size:clamp(1.7rem,3.6vw,2.6rem)">Como identificar os municípios<br>mais vulneráveis antes do resultado chegar?</h2>
+    </div>
+  </section>
+
+  <!-- 4. FLUXO DA SOLUÇÃO -->
+  <section class="slide" data-title="Fluxo">
+    <div class="slide-inner" style="max-width:920px">
+      <p class="eyebrow">O que construímos</p>
+      <h2 class="headline" style="font-size:clamp(1.5rem,3vw,2.1rem);margin-bottom:8px">Uma pipeline de ponta a ponta</h2>
+      <div class="chart-wrap" style="max-width:900px">
+        <svg viewBox="0 0 900 220" role="img" aria-label="Fluxo: dado, pipeline, modelo, decisão">
+          <line class="draw-in" style="--len:180;animation-delay:.2s" x1="120" y1="110" x2="300" y2="110" stroke="var(--baseline)" stroke-width="2" stroke-dasharray="180"/>
+          <line class="draw-in" style="--len:180;animation-delay:.5s" x1="400" y1="110" x2="580" y2="110" stroke="var(--baseline)" stroke-width="2" stroke-dasharray="180"/>
+          <line class="draw-in" style="--len:180;animation-delay:.8s" x1="680" y1="110" x2="820" y2="110" stroke="var(--baseline)" stroke-width="2" stroke-dasharray="180"/>
+
+          <g class="pop-in" style="animation-delay:0s">
+            <circle cx="70" cy="110" r="52" fill="var(--surface-raised)" stroke="var(--hairline)"/>
+            <path d="M50 92 h40 a4 4 0 0 1 4 4 v28 a4 4 0 0 1 -4 4 h-40 a4 4 0 0 1 -4 -4 v-28 a4 4 0 0 1 4 -4z M46 100 h48 M46 112 h48 M46 124 h48" stroke="var(--data-blue)" stroke-width="2" fill="none" stroke-linecap="round"/>
+          </g>
+          <g class="pop-in" style="animation-delay:.35s">
+            <circle cx="350" cy="110" r="52" fill="var(--surface-raised)" stroke="var(--hairline)"/>
+            <circle cx="335" cy="98" r="9" fill="none" stroke="var(--data-orange)" stroke-width="2.5"/>
+            <circle cx="362" cy="122" r="13" fill="none" stroke="var(--data-orange)" stroke-width="2.5"/>
+            <path d="M335 107 v10 M362 109 v-8" stroke="var(--data-orange)" stroke-width="2.5" stroke-linecap="round"/>
+          </g>
+          <g class="pop-in" style="animation-delay:.65s">
+            <circle cx="630" cy="110" r="52" fill="var(--surface-raised)" stroke="var(--hairline)"/>
+            <circle cx="612" cy="120" r="5" fill="var(--data-aqua)"/>
+            <circle cx="630" cy="98" r="5" fill="var(--data-aqua)"/>
+            <circle cx="648" cy="122" r="5" fill="var(--data-aqua)"/>
+            <circle cx="630" cy="128" r="5" fill="var(--data-aqua)"/>
+            <path d="M612 120 L630 98 M630 98 L648 122 M612 120 L630 128 M648 122 L630 128 M630 98 L630 128" stroke="var(--data-aqua)" stroke-width="1.5"/>
+          </g>
+          <g class="pop-in" style="animation-delay:.95s">
+            <circle cx="870" cy="110" r="52" fill="var(--surface-raised)" stroke="var(--brand)" stroke-width="2"/>
+            <path d="M850 112 l14 14 24 -30" stroke="var(--brand)" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+          </g>
+
+          <text x="70" y="185" text-anchor="middle" class="mark-label">Dado</text>
+          <text x="350" y="185" text-anchor="middle" class="mark-label">Pipeline</text>
+          <text x="630" y="185" text-anchor="middle" class="mark-label">Modelo</text>
+          <text x="870" y="185" text-anchor="middle" class="mark-label">Decisão</text>
+        </svg>
+      </div>
+      <p class="caption">Materialização do dado → pré-processamento → treino e seleção → priorização de risco.</p>
+    </div>
+  </section>
+
+  <!-- 5. VOLUME DE DADOS -->
+  <section class="slide" data-title="Dados">
+    <div class="slide-inner">
+      <p class="eyebrow">Base utilizada</p>
+      <div class="stat-figure" id="statCount">0</div>
+      <p class="stat-label">registros de aluno, unindo microdados públicos com o território do município — 2023 a 2024</p>
+    </div>
+  </section>
+
+  <!-- 6. SPLIT TEMPORAL -->
+  <section class="slide" data-title="Metodologia">
+    <div class="slide-inner" style="max-width:820px">
+      <p class="eyebrow">Metodologia</p>
+      <h2 class="headline" style="font-size:clamp(1.5rem,3vw,2.1rem)">Testamos contra um ano que o modelo nunca viu</h2>
+      <div class="chart-wrap" style="max-width:760px">
+        <svg viewBox="0 0 760 150" role="img" aria-label="2023 dividido em treino, validação e teste; 2024 é teste do futuro">
+          <rect class="bar-rect" style="animation-delay:.1s" x="0" y="40" width="322" height="46" rx="6" fill="var(--data-blue)"/>
+          <rect class="bar-rect" style="animation-delay:.3s" x="326" y="40" width="69" height="46" rx="6" fill="var(--data-aqua)"/>
+          <rect class="bar-rect" style="animation-delay:.5s" x="399" y="40" width="69" height="46" rx="6" fill="var(--data-orange)"/>
+          <rect class="bar-rect" style="animation-delay:.75s" x="500" y="40" width="260" height="46" rx="6" fill="none" stroke="var(--brand)" stroke-width="2" stroke-dasharray="5 5"/>
+
+          <text x="161" y="30" text-anchor="middle" class="mark-label">Treino 70%</text>
+          <text x="360" y="30" text-anchor="middle" class="mark-label" style="font-size:11px">Val. 15%</text>
+          <text x="433" y="30" text-anchor="middle" class="mark-label" style="font-size:11px">Teste 15%</text>
+          <text x="630" y="30" text-anchor="middle" class="mark-label">Teste do futuro</text>
+
+          <text x="161" y="110" text-anchor="middle" class="value-label">2023</text>
+          <text x="630" y="110" text-anchor="middle" class="value-label" fill="var(--brand)">2024</text>
+        </svg>
+      </div>
+      <p class="caption">O modelo escolhe seus parâmetros só olhando 2023 — 2024 inteiro fica reservado, intocado, para a avaliação final.</p>
+    </div>
+  </section>
+
+  <!-- 7. SELECAO DO MODELO -->
+  <section class="slide" data-title="Seleção do modelo">
+    <div class="slide-inner">
+      <p class="eyebrow">Seleção do modelo</p>
+      <h2 class="headline" style="font-size:clamp(1.5rem,3vw,2.1rem)">Três candidatos, um critério só</h2>
+      <div class="chart-wrap" style="max-width:520px">
+        <svg viewBox="0 0 520 260" role="img" aria-label="Comparação de PR-AUC entre três modelos candidatos">
+          <line x1="150" y1="20" x2="150" y2="210" stroke="var(--baseline)" stroke-width="1"/>
+          <line x1="150" y1="210" x2="510" y2="210" stroke="var(--baseline)" stroke-width="1"/>
+
+          <rect class="bar-rect" style="animation-delay:.1s;transform-origin:150px 210px" x="150" y="52" width="329" height="34" rx="6" fill="var(--data-blue)"/>
+          <text x="20" y="74" class="mark-label">HistGradient</text>
+          <text x="500" y="74" text-anchor="end" class="value-label" fill="var(--ink-primary)">0,597</text>
+
+          <rect class="bar-rect" style="animation-delay:.3s;transform-origin:150px 210px" x="150" y="106" width="328" height="34" rx="6" fill="var(--data-orange)"/>
+          <text x="20" y="128" class="mark-label">Reg. Logística</text>
+          <text x="499" y="128" text-anchor="end" class="value-label">0,595</text>
+
+          <rect class="bar-rect" style="animation-delay:.5s;transform-origin:150px 210px" x="150" y="160" width="326" height="34" rx="6" fill="var(--data-aqua)"/>
+          <text x="20" y="182" class="mark-label">Random Forest</text>
+          <text x="497" y="182" text-anchor="end" class="value-label">0,591</text>
+
+          <text x="150" y="235" class="axis-label">PR-AUC médio, validação cruzada (5 folds)</text>
+        </svg>
+      </div>
+      <p class="caption">Corrida acirrada — o vencedor foi decidido pela média entre 5 folds, não por um único split de sorte.</p>
+    </div>
+  </section>
+
+  <!-- 8. QUEDA DE DESEMPENHO -->
+  <section class="slide" data-title="Resultado 2023 vs 2024">
+    <div class="slide-inner">
+      <p class="eyebrow">Resultado</p>
+      <h2 class="headline" style="font-size:clamp(1.5rem,3vw,2.1rem)">O desempenho cai ao prever o futuro</h2>
+      <div class="chart-wrap" style="max-width:480px">
+        <svg viewBox="0 0 480 260" role="img" aria-label="ROC-AUC e PR-AUC caem de teste 2023 para teste 2024">
+          <line x1="50" y1="210" x2="450" y2="210" stroke="var(--baseline)" stroke-width="1"/>
+
+          <rect class="bar-rect" style="animation-delay:.1s" x="90" y="66" width="46" height="144" rx="5" fill="var(--data-blue)"/>
+          <text x="113" y="58" text-anchor="middle" class="value-label">0,688</text>
+          <rect class="bar-rect" style="animation-delay:.25s" x="146" y="85.3" width="46" height="124.7" rx="5" fill="var(--data-orange)"/>
+          <text x="169" y="77.3" text-anchor="middle" class="value-label">0,596</text>
+          <text x="140" y="234" text-anchor="middle" class="mark-label">Teste 2023</text>
+
+          <rect class="bar-rect" style="animation-delay:.45s" x="270" y="76.3" width="46" height="133.7" rx="5" fill="var(--data-blue)"/>
+          <text x="293" y="68.3" text-anchor="middle" class="value-label">0,638</text>
+          <rect class="bar-rect" style="animation-delay:.6s" x="326" y="99.5" width="46" height="110.5" rx="5" fill="var(--data-orange)"/>
+          <text x="349" y="91.5" text-anchor="middle" class="value-label">0,527</text>
+          <text x="320" y="234" text-anchor="middle" class="mark-label" fill="var(--brand)">Teste 2024</text>
+        </svg>
+      </div>
+      <div class="legend">
+        <span class="legend-item"><span class="legend-swatch" style="background:var(--data-blue)"></span>ROC-AUC</span>
+        <span class="legend-item"><span class="legend-swatch" style="background:var(--data-orange)"></span>PR-AUC</span>
+      </div>
+      <p class="caption">A queda é real — e a próxima página mostra exatamente por quê.</p>
+    </div>
+  </section>
+
+  <!-- 9. CALIBRACAO -->
+  <section class="slide" data-title="Calibração">
+    <div class="slide-inner">
+      <p class="eyebrow">O achado mais revelador</p>
+      <h2 class="headline" style="font-size:clamp(1.5rem,3vw,2.1rem)">O modelo superestima o risco em 2024</h2>
+      <div class="chart-wrap" style="max-width:420px">
+        <svg viewBox="0 0 380 380" role="img" aria-label="Curva de calibração: probabilidade prevista vs taxa real observada">
+          <line x1="50" y1="330" x2="50" y2="20" stroke="var(--baseline)" stroke-width="1"/>
+          <line x1="50" y1="330" x2="350" y2="330" stroke="var(--baseline)" stroke-width="1"/>
+          <line x1="50" y1="330" x2="350" y2="30" stroke="var(--ink-muted)" stroke-width="1.5" stroke-dasharray="4 4"/>
+          <text x="352" y="34" class="axis-label" style="font-size:11px">calibração perfeita</text>
+
+          <polyline class="draw-in" style="--len:220" stroke-dasharray="220"
+            points="106,275 154,241 172,232 187,218 200,217 208,213 218,195 232,186 251,168 276,144"
+            fill="none" stroke="var(--risk-critical)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+
+          <circle class="pop-in" style="animation-delay:.9s" cx="106" cy="275" r="4.5" fill="var(--risk-critical)"/>
+          <circle class="pop-in" style="animation-delay:.95s" cx="200" cy="217" r="4.5" fill="var(--risk-critical)"/>
+          <circle class="pop-in" style="animation-delay:1s" cx="232" cy="186" r="4.5" fill="var(--risk-critical)"/>
+          <circle class="pop-in" style="animation-delay:1.05s" cx="276" cy="144" r="4.5" fill="var(--risk-critical)"/>
+
+          <text x="10" y="333" class="axis-label">0%</text>
+          <text x="10" y="24" class="axis-label">100%</text>
+          <text x="50" y="352" class="axis-label">previsto 0%</text>
+          <text x="350" y="352" text-anchor="end" class="axis-label">previsto 100%</text>
+        </svg>
+      </div>
+      <p class="subhead">Quando o modelo diz <strong style="color:var(--ink-primary)">50% de risco</strong>, a realidade é de só <strong style="color:var(--risk-critical)">~38%</strong>.</p>
+    </div>
+  </section>
+
+  <!-- 10. FEATURE IMPORTANCE -->
+  <section class="slide" data-title="Fatores mais importantes">
+    <div class="slide-inner">
+      <p class="eyebrow">Interpretabilidade</p>
+      <h2 class="headline" style="font-size:clamp(1.5rem,3vw,2.1rem)">Um fator domina a previsão</h2>
+      <div class="chart-wrap" style="max-width:560px">
+        <svg viewBox="0 0 560 220" role="img" aria-label="Importância de features: histórico municipal domina">
+          <rect class="bar-rect" style="animation-delay:.1s;transform-origin:190px 40px" x="190" y="24" width="329" height="30" rx="5" fill="var(--brand)"/>
+          <text x="10" y="44" class="mark-label" style="font-size:13px">Histórico do município</text>
+          <text x="530" y="44" text-anchor="end" class="value-label">56%</text>
+
+          <rect class="bar-rect" style="animation-delay:.3s;transform-origin:190px 84px" x="190" y="68" width="21" height="30" rx="5" fill="var(--baseline)"/>
+          <text x="10" y="88" class="mark-label" style="font-size:13px">Gap meta-resultado</text>
+          <text x="221" y="88" class="axis-label">3,6%</text>
+
+          <rect class="bar-rect" style="animation-delay:.4s;transform-origin:190px 128px" x="190" y="112" width="19" height="30" rx="5" fill="var(--baseline)"/>
+          <text x="10" y="132" class="mark-label" style="font-size:13px">Rede estadual</text>
+          <text x="219" y="132" class="axis-label">3,3%</text>
+
+          <rect class="bar-rect" style="animation-delay:.5s;transform-origin:190px 172px" x="190" y="156" width="9" height="30" rx="5" fill="var(--baseline)"/>
+          <text x="10" y="176" class="mark-label" style="font-size:13px">Rede municipal</text>
+          <text x="209" y="176" class="axis-label">1,6%</text>
+        </svg>
+      </div>
+      <p class="caption">A taxa histórica de alfabetização do próprio município responde por mais da metade do peso do modelo.</p>
+    </div>
+  </section>
+
+  <!-- 10b. CLUSTERIZACAO REGIONAL -->
+  <section class="slide" data-title="Padrões regionais">
+    <div class="slide-inner" style="max-width:820px">
+      <p class="eyebrow">Quais regiões se parecem</p>
+      <h2 class="headline" style="font-size:clamp(1.5rem,3vw,2.1rem)">Um padrão que atravessa fronteiras oficiais</h2>
+      <div style="display:flex;gap:clamp(24px,6vw,72px);justify-content:center;flex-wrap:wrap;margin-top:4px">
+        <div class="chart-wrap" style="max-width:200px">
+          <svg viewBox="0 0 300 300" role="img" aria-label="Cluster de alto desempenho: taxa média de alfabetização 77,9%">
+            <circle cx="150" cy="150" r="120" fill="none" stroke="var(--hairline)" stroke-width="22"/>
+            <circle cx="150" cy="150" r="120" fill="none" stroke="var(--good)" stroke-width="22"
+                    stroke-linecap="round" stroke-dasharray="587 754" stroke-dashoffset="0"
+                    transform="rotate(-90 150 150)"/>
+            <text x="150" y="142" text-anchor="middle" class="stat-figure" style="font-size:46px" fill="var(--ink-primary)">77,9%</text>
+            <text x="150" y="172" text-anchor="middle" class="axis-label" style="font-size:12px">alto desempenho</text>
+          </svg>
+        </div>
+        <div class="chart-wrap" style="max-width:200px">
+          <svg viewBox="0 0 300 300" role="img" aria-label="Cluster de baixo desempenho: taxa média de alfabetização 45,9%">
+            <circle cx="150" cy="150" r="120" fill="none" stroke="var(--hairline)" stroke-width="22"/>
+            <circle cx="150" cy="150" r="120" fill="none" stroke="var(--risk-critical)" stroke-width="22"
+                    stroke-linecap="round" stroke-dasharray="346 754" stroke-dashoffset="0"
+                    transform="rotate(-90 150 150)"/>
+            <text x="150" y="142" text-anchor="middle" class="stat-figure" style="font-size:46px" fill="var(--ink-primary)">45,9%</text>
+            <text x="150" y="172" text-anchor="middle" class="axis-label" style="font-size:12px">baixo desempenho</text>
+          </svg>
+        </div>
+      </div>
+      <p class="subhead">K-means dividiu 5.232 municípios em dois grupos de desempenho territorial. Mas nenhuma das 5 regiões oficiais é homogênea: Norte e Nordeste concentram baixo desempenho, Centro-Oeste, Sudeste e Sul concentram alto — e todas têm municípios fora do próprio padrão regional.</p>
+    </div>
+  </section>
+
+  <!-- 11. PREDITIVO VS ACIONAVEL -->
+  <section class="slide" data-title="Preditivo vs acionável">
+    <div class="slide-inner" style="max-width:820px">
+      <p class="eyebrow">Uma ressalva importante</p>
+      <h2 class="headline" style="font-size:clamp(1.5rem,3vw,2.1rem)">Prever não é o mesmo que agir</h2>
+      <div class="compare-row">
+        <div class="compare-box">
+          <h3><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="var(--good)" stroke-width="2"/><path d="M20 20l-4-4" stroke="var(--good)" stroke-width="2" stroke-linecap="round"/></svg> Onde agir</h3>
+          <p>O modelo ranqueia municípios por risco relativo com boa confiança — útil para priorizar atenção.</p>
+        </div>
+        <div class="compare-box dim">
+          <h3><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M12 3v6M12 15v6M3 12h6M15 12h6" stroke="var(--ink-muted)" stroke-width="2" stroke-linecap="round"/></svg> O que fazer</h3>
+          <p>O fator dominante é histórico, não uma alavanca — o modelo ainda não indica qual intervenção funciona.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 12. MUNICIPIOS PRIORITARIOS -->
+  <section class="slide" data-title="Municípios prioritários">
+    <div class="slide-inner" style="max-width:640px">
+      <p class="eyebrow">Aplicação prática</p>
+      <h2 class="headline" style="font-size:clamp(1.5rem,3vw,2.1rem)">Previsto vs. realidade, lado a lado</h2>
+      <div class="chart-wrap" style="max-width:600px">
+        <svg viewBox="0 0 600 200" role="img" aria-label="Comparação de risco previsto e real por município">
+          <line x1="60" y1="0" x2="60" y2="200" stroke="var(--hairline)" stroke-width="1"/>
+          <line x1="560" y1="0" x2="560" y2="200" stroke="var(--hairline)" stroke-width="1"/>
+          <text x="60" y="16" text-anchor="middle" class="axis-label">0%</text>
+          <text x="560" y="16" text-anchor="middle" class="axis-label">100%</text>
+
+          <g class="fade-in" style="animation-delay:.1s">
+            <line x1="540" y1="42" x2="498" y2="42" stroke="var(--baseline)" stroke-width="2"/>
+            <circle cx="540" cy="42" r="6" fill="var(--brand)"/>
+            <circle cx="498" cy="42" r="6" fill="var(--risk-critical)"/>
+            <text x="20" y="46" class="mark-label" style="font-size:12px">2919900</text>
+          </g>
+          <g class="fade-in" style="animation-delay:.28s">
+            <line x1="538" y1="86" x2="310" y2="86" stroke="var(--baseline)" stroke-width="2"/>
+            <circle cx="538" cy="86" r="6" fill="var(--brand)"/>
+            <circle cx="310" cy="86" r="6" fill="var(--risk-critical)"/>
+            <text x="20" y="90" class="mark-label" style="font-size:12px">1718501</text>
+          </g>
+          <g class="fade-in" style="animation-delay:.46s">
+            <line x1="533" y1="130" x2="333" y2="130" stroke="var(--baseline)" stroke-width="2"/>
+            <circle cx="533" cy="130" r="6" fill="var(--brand)"/>
+            <circle cx="333" cy="130" r="6" fill="var(--risk-critical)"/>
+            <text x="20" y="134" class="mark-label" style="font-size:12px">2205581</text>
+          </g>
+          <g class="fade-in" style="animation-delay:.64s">
+            <line x1="533" y1="174" x2="346" y2="174" stroke="var(--baseline)" stroke-width="2"/>
+            <circle cx="533" cy="174" r="6" fill="var(--brand)"/>
+            <circle cx="346" cy="174" r="6" fill="var(--risk-critical)"/>
+            <text x="20" y="178" class="mark-label" style="font-size:12px">2406908</text>
+          </g>
+        </svg>
+      </div>
+      <div class="legend">
+        <span class="legend-item"><span class="legend-swatch" style="background:var(--brand)"></span>risco previsto</span>
+        <span class="legend-item"><span class="legend-swatch" style="background:var(--risk-critical)"></span>risco real (2024)</span>
+      </div>
+      <p class="caption">Um ranking só de previsão pode enganar — comparar com o real, quando existe, evita decisão baseada em número inflado.</p>
+    </div>
+  </section>
+
+  <!-- 13. LIMITACOES -->
+  <section class="slide" data-title="Limitações">
+    <div class="slide-inner" style="max-width:760px">
+      <p class="eyebrow">Com honestidade</p>
+      <h2 class="headline" style="font-size:clamp(1.5rem,3vw,2.1rem)">Três limitações que pesam no uso</h2>
+      <div class="icon-row">
+        <div class="icon-card">
+          <div class="icon-circle"><svg width="30" height="30" viewBox="0 0 24 24" fill="none"><path d="M4 18a8 8 0 0116 0" stroke="var(--risk-serious)" stroke-width="2" stroke-linecap="round"/><path d="M12 18l4-6" stroke="var(--risk-serious)" stroke-width="2" stroke-linecap="round"/></svg></div>
+          <h3>Discriminação moderada</h3>
+          <p>ROC-AUC 0,64–0,69: melhor que sorteio, abaixo do ideal para decisão individual.</p>
+        </div>
+        <div class="icon-card">
+          <div class="icon-circle"><svg width="30" height="30" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="8" stroke="var(--risk-serious)" stroke-width="2"/><circle cx="15" cy="9" r="1.6" fill="var(--risk-serious)"/></svg></div>
+          <h3>Descalibrado</h3>
+          <p>Superestima risco em 2024 — bom para ranquear, não para o número absoluto.</p>
+        </div>
+        <div class="icon-card">
+          <div class="icon-circle"><svg width="30" height="30" viewBox="0 0 24 24" fill="none"><rect x="4" y="6" width="16" height="14" rx="2" stroke="var(--risk-serious)" stroke-width="2"/><path d="M4 11h16M8 4v4M16 4v4" stroke="var(--risk-serious)" stroke-width="2" stroke-linecap="round"/></svg></div>
+          <h3>Só 2 anos de dado</h3>
+          <p>Uma única fronteira temporal — ainda não dá para confirmar se o padrão se repete.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 14. PROXIMOS PASSOS -->
+  <section class="slide" data-title="Próximos passos">
+    <div class="slide-inner" style="max-width:800px">
+      <p class="eyebrow">Caminho à frente</p>
+      <h2 class="headline" style="font-size:clamp(1.5rem,3vw,2.1rem)">Quatro frentes para evoluir</h2>
+      <div class="icon-row">
+        <div class="icon-card">
+          <div class="icon-circle"><svg width="28" height="28" viewBox="0 0 24 24" fill="none"><path d="M4 21V9l8-5 8 5v12" stroke="var(--data-aqua)" stroke-width="2" stroke-linejoin="round"/><path d="M9 21v-6h6v6" stroke="var(--data-aqua)" stroke-width="2"/></svg></div>
+          <h3>Censo Escolar &amp; FUNDEB</h3>
+          <p>Dados que são alavanca real de política, não só sinal.</p>
+        </div>
+        <div class="icon-card">
+          <div class="icon-circle"><svg width="28" height="28" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" fill="var(--data-aqua)"/><path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M5.6 18.4l2.8-2.8M15.6 8.4l2.8-2.8" stroke="var(--data-aqua)" stroke-width="2" stroke-linecap="round"/></svg></div>
+          <h3>Recalibração</h3>
+          <p>Corrigir a superestimação de forma direta e barata.</p>
+        </div>
+        <div class="icon-card">
+          <div class="icon-circle"><svg width="28" height="28" viewBox="0 0 24 24" fill="none"><circle cx="7" cy="15" r="4" stroke="var(--data-aqua)" stroke-width="2"/><circle cx="19" cy="9" r="4" stroke="var(--data-aqua)" stroke-width="2"/><path d="M10.6 13.2l5.2-2.5" stroke="var(--data-aqua)" stroke-width="2" stroke-linecap="round"/><path d="M14.2 10.2l2.2-1.4-.6 2.4" stroke="var(--data-aqua)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+          <h3>Análise causal</h3>
+          <p>Testar causalidade, não só correlação, antes de indicar onde investir.</p>
+        </div>
+        <div class="icon-card">
+          <div class="icon-circle"><svg width="28" height="28" viewBox="0 0 24 24" fill="none"><path d="M4 12a8 8 0 0114-5.3M20 12a8 8 0 01-14 5.3" stroke="var(--data-aqua)" stroke-width="2" stroke-linecap="round"/><path d="M18 4v4h-4M6 20v-4h4" stroke="var(--data-aqua)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+          <h3>Monitoramento contínuo</h3>
+          <p>Retreinar quando mais safras de dado existirem.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 15. ENCERRAMENTO -->
+  <section class="slide" data-title="Encerramento">
+    <div class="contour-bg">
+      <svg viewBox="0 0 800 800" class="drift" style="animation-direction:reverse">
+        <path d="M-50 300 Q 200 250 400 320 T 850 280"/>
+        <path d="M-50 380 Q 220 340 420 400 T 850 360"/>
+        <path d="M-50 460 Q 180 410 380 470 T 850 440"/>
+      </svg>
+    </div>
+    <div class="slide-inner z1">
+      <p class="eyebrow fade-in">Para encerrar</p>
+      <h1 class="headline fade-in" style="animation-delay:.15s; font-size:clamp(1.8rem,4vw,3rem)">Um modelo para priorizar —<br>não para decidir sozinho.</h1>
+      <p class="subhead fade-in" style="animation-delay:.3s">Obrigado.</p>
+    </div>
+  </section>
+
+</main>
+
+<script>
+(function () {
+  const deck = document.getElementById('deck');
+  const slides = Array.from(deck.querySelectorAll('.slide'));
+  const dotsNav = document.getElementById('dots');
+  const progressFill = document.getElementById('progressFill');
+  const prevBtn = document.getElementById('prevBtn');
+  const nextBtn = document.getElementById('nextBtn');
+  let current = 0;
+
+  slides.forEach((s, i) => {
+    const num = document.createElement('span');
+    num.className = 'slide-kicker-num';
+    num.textContent = String(i + 1).padStart(2, '0') + ' / ' + String(slides.length).padStart(2, '0');
+    s.appendChild(num);
+
+    const dot = document.createElement('button');
+    dot.className = 'dot';
+    dot.setAttribute('role', 'tab');
+    dot.setAttribute('aria-label', 'Ir para slide ' + (i + 1) + ': ' + (s.dataset.title || ''));
+    dot.addEventListener('click', () => goTo(i));
+    dotsNav.appendChild(dot);
+  });
+
+  function setActive(i) {
+    current = i;
+    slides.forEach((s, idx) => s.classList.toggle('is-active', idx === i));
+    Array.from(dotsNav.children).forEach((d, idx) => d.classList.toggle('active', idx === i));
+    progressFill.style.width = ((i + 1) / slides.length) * 100 + '%';
+    prevBtn.style.visibility = i === 0 ? 'hidden' : 'visible';
+    nextBtn.style.visibility = i === slides.length - 1 ? 'hidden' : 'visible';
+    if (i === 4) animateCount();
+  }
+
+  function goTo(i) {
+    i = Math.max(0, Math.min(slides.length - 1, i));
+    slides[i].scrollIntoView({ behavior: 'smooth', inline: 'start', block: 'nearest' });
+  }
+
+  // Reads the deck's actual scroll position rather than the (debounced)
+  // IntersectionObserver-tracked `current` — keeps rapid key presses or
+  // clicks from compounding against a stale index mid-transition.
+  function nearestIndex() {
+    return Math.max(0, Math.min(slides.length - 1, Math.round(deck.scrollLeft / window.innerWidth)));
+  }
+
+  let countDone = false;
+  function animateCount() {
+    if (countDone) return;
+    countDone = true;
+    const el = document.getElementById('statCount');
+    const target = 3355846;
+    const dur = 1400;
+    const start = performance.now();
+    function tick(now) {
+      const p = Math.min(1, (now - start) / dur);
+      const eased = 1 - Math.pow(1 - p, 3);
+      const val = Math.floor(eased * target);
+      el.textContent = val.toLocaleString('pt-BR');
+      if (p < 1) requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+  }
+
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach((entry) => {
+      if (entry.isIntersecting && entry.intersectionRatio > 0.6) {
+        setActive(slides.indexOf(entry.target));
+      }
+    });
+  }, { root: deck, threshold: [0.6] });
+  slides.forEach((s) => io.observe(s));
+
+  prevBtn.addEventListener('click', () => goTo(nearestIndex() - 1));
+  nextBtn.addEventListener('click', () => goTo(nearestIndex() + 1));
+
+  window.addEventListener('keydown', (e) => {
+    if (['ArrowRight', 'PageDown', ' '].includes(e.key)) { e.preventDefault(); goTo(nearestIndex() + 1); }
+    else if (['ArrowLeft', 'PageUp'].includes(e.key)) { e.preventDefault(); goTo(nearestIndex() - 1); }
+    else if (e.key === 'Home') { e.preventDefault(); goTo(0); }
+    else if (e.key === 'End') { e.preventDefault(); goTo(slides.length - 1); }
+  });
+
+  setActive(0);
+})();
+</script>

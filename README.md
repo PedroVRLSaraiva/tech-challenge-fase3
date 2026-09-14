@@ -59,7 +59,10 @@ projeto" e "Possíveis evoluções futuras").
 ## Etapas de modelagem
 
 O detalhamento completo das decisões abaixo — com as alternativas
-consideradas e descartadas — está no documento de design:
+consideradas e descartadas — está na
+[documentação técnica](reports/documentacao_tecnica.md), numa
+[apresentação HTML](reports/apresentacao_tecnica.html) com os resultados e
+gráficos embutidos, e no documento de design original,
 [`docs/superpowers/specs/2026-09-11-pipeline-modelagem-design.md`](docs/superpowers/specs/2026-09-11-pipeline-modelagem-design.md).
 Resumo do que foi construído:
 
@@ -105,34 +108,42 @@ Resumo do que foi construído:
 4. **Três modelos candidatos** (todos com `class_weight="balanced"` para
    compensar o desbalanceamento moderado da classe "em risco"):
    `LogisticRegression` (baseline interpretável), `RandomForestClassifier`
-   e `HistGradientBoostingClassifier`. Os três são comparados **apenas na
-   validação**, nunca no teste, para evitar um segundo tipo de vazamento —
-   vazamento pelo próprio processo de avaliação (escolher o modelo
-   "espiando" o teste).
+   e `HistGradientBoostingClassifier`. Os três são comparados por
+   **validação cruzada estratificada (5 folds)** sobre o pool de
+   desenvolvimento (treino+validação fundidos), nunca no teste, para
+   evitar um segundo tipo de vazamento — vazamento pelo próprio processo
+   de avaliação (escolher o modelo "espiando" o teste). Um único holdout
+   de validação dependeria de quais linhas caíssem em validação por
+   acaso; k-fold reduz essa variância e ainda revela o desvio-padrão entre
+   folds, um sinal de quão estável é cada candidato.
 
 ## Escolha do algoritmo
 
-O critério de seleção foi o **PR-AUC** (`average_precision_score`) medido
-na validação — uma métrica que não depende de escolher um limiar de
-decisão de antemão e que é mais informativa que a acurácia quando a classe
-de interesse (aluno em risco de não alfabetização) não é maioria nem
-minoria extrema (aqui, ~41% da base). Resultado da corrida:
+O critério de seleção foi o **PR-AUC médio em validação cruzada**
+(`average_precision_score`, 5 folds estratificados) sobre o pool de
+desenvolvimento (treino+validação, 1.277.599 linhas) — uma métrica que não
+depende de escolher um limiar de decisão de antemão e que é mais
+informativa que a acurácia quando a classe de interesse (aluno em risco de
+não alfabetização) não é maioria nem minoria extrema (aqui, ~41% da base).
+Resultado da corrida:
 
-| modelo | PR-AUC (validação) |
-|---|---|
-| **hist_gradient_boosting** | **0,5980** |
-| regressão logística | 0,5958 |
-| random forest | 0,5925 |
+| modelo | PR-AUC médio (CV) | desvio entre folds |
+|---|---|---|
+| **hist_gradient_boosting** | **0,5969** | 0,0007 |
+| regressão logística | 0,5954 | 0,0006 |
+| random forest | 0,5914 | 0,0004 |
 
 O `HistGradientBoostingClassifier` venceu, mas por margem pequena — a
-diferença entre o 1º e o 3º colocado é de apenas ~0,006 em PR-AUC. A
-consulta ao BigQuery usa `ORDER BY id_aluno, ano` explícito justamente
-para que essa comparação — e todo o restante do notebook — seja
-reprodutível: sem uma ordenação fixa, `SELECT *` no BigQuery retorna as
-linhas em ordem arbitrária a cada execução, o que deslocaria o resultado
-de `train_test_split` mesmo com seed fixa. O vencedor e a conclusão —
-corrida acirrada entre os três candidatos, sem um modelo claramente
-dominante — são os números desta execução reprodutível.
+diferença entre o 1º e o 3º colocado é de apenas ~0,006 em PR-AUC, menor
+até que o desvio entre folds de cada candidato individualmente. O baixo
+desvio-padrão entre folds (≤0,0007 nos três) mostra que o resultado é
+estável, não um acaso de split. A consulta ao BigQuery usa
+`ORDER BY id_aluno, ano` explícito justamente para que essa comparação — e
+todo o restante do notebook — seja reprodutível: sem uma ordenação fixa,
+`SELECT *` no BigQuery retorna as linhas em ordem arbitrária a cada
+execução, o que deslocaria o resultado de `train_test_split`/`KFold` mesmo
+com seed fixa. O vencedor é então refitado no pool de desenvolvimento
+inteiro para virar o modelo de produção avaliado nas seções seguintes.
 
 ## Métricas de avaliação
 
@@ -143,8 +154,8 @@ de 2024 inteiro (*out-of-time*, um ano que o modelo nunca viu):
 
 | conjunto | ROC-AUC | PR-AUC |
 |---|---|---|
-| Teste-2023 (mesmo ano) | 0,6878 | 0,5962 |
-| 2024 (out-of-time) | 0,6388 | 0,5277 |
+| Teste-2023 (mesmo ano) | 0,6879 | 0,5964 |
+| 2024 (out-of-time) | 0,6384 | 0,5273 |
 
 Há uma queda real de desempenho de 2023 para 2024 (~0,05 em ROC-AUC, ~0,07
 em PR-AUC) — investigada na seção "Insights encontrados" abaixo, onde
@@ -156,17 +167,23 @@ Como a decisão de classificar um aluno como "em risco" depende de um
 limiar sobre a probabilidade prevista, e a escolha desse limiar é uma
 decisão de política pública (quanto o gestor está disposto a errar para o
 lado de "alarme falso" vs. "caso perdido"), reportamos três cenários. Os
-limiares são **escolhidos na validação** (nunca olhando para o teste-2024,
-para não contaminar a única avaliação final com uma escolha feita a
-partir dela) e depois aplicados, uma única vez, ao conjunto de 2024 — a
-tabela abaixo mostra o limiar escolhido e a precisão/recall resultante
-nesse teste:
+limiares são **escolhidos em probabilidades out-of-fold (OOF)** do pool de
+desenvolvimento — geradas via `cross_val_predict`, onde cada linha é
+prevista por um modelo treinado nas outras 4 fatias, nunca na sua própria
+(nunca olhando para o teste-2024, para não contaminar a única avaliação
+final com uma escolha feita a partir dela) — e depois aplicados, uma única
+vez, ao conjunto de 2024. Essa técnica evita um vazamento sutil que surgiu
+ao trocar o holdout único por validação cruzada: como o modelo final é
+refitado no pool de desenvolvimento inteiro, não sobra nenhum pedaço dele
+que o modelo não tenha visto — só as probabilidades OOF permitem calibrar
+o limiar sem usar dado que o próprio modelo já aprendeu. A tabela abaixo
+mostra o limiar escolhido e a precisão/recall resultante no teste-2024:
 
-| cenário | limiar (escolhido na validação) | precisão em 2024 | recall em 2024 |
+| cenário | limiar (escolhido em OOF no dev) | precisão em 2024 | recall em 2024 |
 |---|---|---|---|
-| padrão (0,5) | 0,500 | 0,483 | 0,665 |
-| otimizado para F1 | 0,392 | 0,445 | 0,869 |
-| recall-prioritário (≥80%) | 0,434 | 0,461 | 0,796 |
+| padrão (0,5) | 0,500 | 0,484 | 0,655 |
+| otimizado para F1 | 0,393 | 0,445 | 0,868 |
+| recall-prioritário (≥80%) | 0,433 | 0,460 | 0,799 |
 
 Ver a leitura de negócio dessa tabela em "Aplicação prática para políticas
 públicas".
@@ -178,14 +195,14 @@ qualidade do modelo em um número, mas não mostram de forma direta "o
 modelo previu X, a realidade foi Y" — a comparação mais concreta para
 avaliar a capacidade real do modelo. Duas visões complementares:
 
-**Matrizes de confusão em 2024**, para os três limiares escolhidos na
-validação:
+**Matrizes de confusão em 2024**, para os três limiares escolhidos em OOF
+no pool de desenvolvimento:
 
 | cenário | verdadeiro positivo | falso positivo | falso negativo | verdadeiro negativo |
 |---|---|---|---|---|
-| padrão (0,500) | 495.985 | 531.832 | 249.684 | 575.287 |
-| otimizado para F1 (0,392) | 647.798 | 807.143 | 97.871 | 299.976 |
-| recall-prioritário (0,434) | 593.458 | 695.130 | 152.211 | 411.989 |
+| padrão (0,500) | 488.770 | 520.308 | 256.899 | 586.811 |
+| otimizado para F1 (0,393) | 647.368 | 806.791 | 98.301 | 300.328 |
+| recall-prioritário (0,433) | 595.492 | 698.437 | 150.177 | 408.682 |
 
 Em **todos** os três cenários, o número de falsos positivos supera o de
 verdadeiros positivos — um primeiro sinal de que o modelo alarma mais do
@@ -197,7 +214,7 @@ cada faixa — responde "quando o modelo diz 70% de risco, isso corresponde
 a uma frequência real de ~70%, ou o modelo está sistematicamente
 otimista/pessimista?":
 
-![Curva de calibração 2024](reports/calibracao_2024.png)
+![Curva de calibração 2024](reports/imagens/calibracao_2024.png)
 
 O modelo fica **sistematicamente abaixo da diagonal de calibração
 perfeita** em toda a faixa de probabilidade — quando ele diz "50% de
@@ -220,21 +237,21 @@ transformadas):
 
 | feature | importância |
 |---|---|
-| `taxa_alfabetizacao_ano_anterior` | 0,562 |
-| `rede_Estadual` | 0,037 |
-| `meta_alfabetizacao_ano_anterior` | 0,029 |
-| `gap_meta_resultado_ano_anterior` | 0,024 |
-| `rede_Municipal` | 0,013 |
-| `regiao_Sudeste` | 0,012 |
-| `regiao_Nordeste` | 0,010 |
+| `taxa_alfabetizacao_ano_anterior` | 0,559 |
+| `gap_meta_resultado_ano_anterior` | 0,036 |
+| `rede_Estadual` | 0,033 |
+| `rede_Municipal` | 0,016 |
+| `meta_alfabetizacao_ano_anterior` | 0,014 |
+| `regiao_Sudeste` | 0,010 |
+| `regiao_Nordeste` | 0,008 |
 
-![Importância de features](reports/importancia_features.png)
-![Curva precisão-recall](reports/curva_precisao_recall.png)
-![Resumo SHAP](reports/shap_summary.png)
+![Importância de features](reports/imagens/importancia_features.png)
+![Curva precisão-recall](reports/imagens/curva_precisao_recall.png)
+![Resumo SHAP](reports/imagens/shap_summary.png)
 
 **Leitura em termos simples:** uma única variável — a taxa histórica de
 alfabetização do próprio município no ano anterior — responde por mais de
-metade do poder preditivo do modelo (0,562 de importância, contra 0,037 da
+metade do poder preditivo do modelo (0,559 de importância, contra 0,036 da
 segunda colocada). Isso significa que o fator individual mais forte para
 prever se *um aluno específico* será alfabetizado não é uma característica
 pessoal daquele aluno, e sim o quão bem o município onde ele estuda já vem
@@ -242,9 +259,9 @@ performando recentemente. Em outras palavras: nascer/estudar num município
 com histórico consistente de bons resultados é, isoladamente, o preditor
 mais forte que este modelo encontrou — o que reforça a leitura de que
 alfabetização é, em grande parte, um fenômeno territorial/sistêmico, e não
-apenas individual. Rede de ensino (estadual vs. municipal) e a distância
-entre meta e resultado do município aparecem como fatores secundários, mas
-com peso bem menor.
+apenas individual. A distância entre meta e resultado do município e a
+rede de ensino (estadual vs. municipal) aparecem como fatores secundários,
+mas com peso bem menor.
 
 **Uma ressalva importante: preditivo não é o mesmo que acionável.** A
 feature dominante (`taxa_alfabetizacao_ano_anterior`) é excelente para
@@ -261,9 +278,9 @@ modelo, e "Possíveis evoluções futuras" para quais dados resolveriam isso.
 ## Insights encontrados
 
 **1. Existe um gap real de generalização temporal.** O ROC-AUC cai de
-0,6878 (teste-2023, mesmo ano de treino) para 0,6388 (2024, ano nunca
+0,6879 (teste-2023, mesmo ano de treino) para 0,6384 (2024, ano nunca
 visto) — uma queda de ~0,05, com uma queda proporcional maior em PR-AUC
-(0,5962 → 0,5277). Isso por si só não diz se o modelo "aprendeu errado" ou
+(0,5964 → 0,5273). Isso por si só não diz se o modelo "aprendeu errado" ou
 se o mundo mudou entre 2023 e 2024; por isso, antes de aceitar o número,
 rodamos um diagnóstico de variação temporal.
 
@@ -289,7 +306,7 @@ completa. Como "Limitações do projeto" detalha, o cohort de treino/teste
 de 2023 se beneficia de um vazamento fraco e diluído: como 2023 não tem
 um "ano anterior" real na Gold, a materialização usa o indicador
 territorial do **mesmo ano** do aluno como fallback — e essa é justamente
-a feature dominante do modelo, `taxa_alfabetizacao_ano_anterior` (0,562
+a feature dominante do modelo, `taxa_alfabetizacao_ano_anterior` (0,559
 de importância, mais da metade do total). Em 2024, o "ano anterior" é
 genuinamente 2023 (sem fallback, sem essa vantagem). Ou seja: parte da
 queda de 2023 para 2024 é provavelmente o desaparecimento mecânico dessa
@@ -307,6 +324,25 @@ observa — o modelo superestimando risco de forma consistente e crescente
 com a probabilidade prevista — é exatamente o padrão esperado quando um
 "nível de base" aprendido em 2023 (parcialmente inflado pelo vazamento do
 fallback) deixa de valer em 2024.
+
+**5. Clusterização de municípios: a divisão dominante é alto vs. baixo
+desempenho territorial, que correlaciona com região mas não coincide com
+ela.** Clusterizamos os 5.232 municípios com indicadores completos em 2024
+(k-means sobre `taxa_alfabetizacao`, `gap_meta_resultado`,
+`meta_alfabetizacao_2024`, k=2 escolhido por silhueta). O cluster de alto
+desempenho tem taxa média de 77,9% (gap médio +8,6, acima da própria meta);
+o de baixo desempenho, taxa média de 45,9% (gap médio -7,8, abaixo da
+meta). Cruzando com a região oficial do IBGE: nenhuma região é
+homogênea — Centro-Oeste (74,4%), Sudeste (70,8%) e Sul (59,3%) concentram
+maioria de municípios de alto desempenho; Norte (77,6%) e Nordeste (62,3%)
+concentram maioria de baixo desempenho, mas em toda região existem
+municípios "fora do padrão" (ex.: ~26% dos municípios do Centro-Oeste estão
+no cluster de baixo desempenho). A silhueta obtida (0,385) é moderada, e
+variou pouco entre k=2 e k=10 (0,348-0,385) — os indicadores territoriais
+formam mais um contínuo de desempenho do que grupos discretos bem
+separados; k=2 captura a divisão mais forte desse contínuo, não uma
+segmentação fina. Ver `reports/imagens/clusters_municipios_2024.png` e
+`notebooks/01_eda_gold_e_alunos.ipynb` (complemento à Hipótese H2).
 
 ## Limitações do projeto
 
@@ -338,12 +374,16 @@ fallback) deixa de valer em 2024.
   gestor público (quantos casos ele consegue atender) que este desafio não
   fornece como dado real — travar um número aqui seria inventar uma
   restrição que não existe.
-- **A pergunta "quais regiões têm padrões semelhantes" foi tratada apenas
-  parcialmente.** A EDA (`notebooks/01_eda_gold_e_alunos.ipynb`) já indicou
-  um padrão regional via teste de Kruskal-Wallis, mas isso não substitui
-  uma clusterização completa (não-supervisionada) das regiões — que é uma
-  tarefa de natureza diferente da pipeline de classificação construída
-  aqui e fica como próximo passo (ver "Possíveis evoluções futuras").
+- **A clusterização de municípios usa só 3 indicadores territoriais, sem
+  variável socioeconômica externa.** A resposta a "quais regiões têm
+  padrões semelhantes" (ver "Insights encontrados") vem de k-means sobre
+  `taxa_alfabetizacao`, `gap_meta_resultado` e `meta_alfabetizacao_2024` —
+  os únicos indicadores territoriais disponíveis sem fonte externa nesta
+  rodada. A silhueta obtida (0,385) é moderada, não alta: os municípios
+  formam mais um contínuo de desempenho do que grupos bem separados, e
+  incorporar fontes como Censo Escolar/FUNDEB/PNAD provavelmente revelaria
+  uma estrutura de cluster mais rica (ex.: agrupamentos por perfil
+  socioeconômico, não só por resultado educacional em si).
 - **O fallback de "ano anterior → mesmo ano" introduz um vazamento
   fraco e diluído no cohort de treino de 2023.** Como a Gold só tem
   2023/2024, alunos de 2023 não têm um "ano anterior" real disponível;
@@ -371,7 +411,7 @@ fallback) deixa de valer em 2024.
   numérico** da probabilidade não deve ser lido como uma estimativa
   calibrada de frequência real nesse ano específico.
 - **A feature mais importante é preditiva, mas não é acionável.**
-  `taxa_alfabetizacao_ano_anterior` (0,562 de importância, mais da metade
+  `taxa_alfabetizacao_ano_anterior` (0,559 de importância, mais da metade
   do total) é o histórico do próprio município — excelente para prever
   (o passado se repete estatisticamente), mas não é algo que um gestor
   público consiga mudar para alterar o resultado futuro. Isso limita o
@@ -405,18 +445,18 @@ O modelo permite estimar, para cada aluno, uma probabilidade de risco de
 não alfabetização — e, agregando essas probabilidades por município, gerar
 um **ranking de municípios prioritários** para ação (a pergunta "onde
 agir", não "o que fazer"). A tabela completa
-está em [`reports/risco_por_municipio_2024.csv`](reports/risco_por_municipio_2024.csv),
+está em [`reports/artefatos/risco_por_municipio_2024.csv`](reports/artefatos/risco_por_municipio_2024.csv),
 e — por causa da descalibração encontrada na seção "Comparação real vs.
 previsto" — ela traz o risco **previsto** e o risco **real observado**
 lado a lado, não só a previsão isolada:
 
 | município | risco previsto | risco real (2024) | leitura |
 |---|---|---|---|
-| 2919900 | 0,944 | 0,875 | boa concordância — risco alto confirmado |
-| 1718501 | 0,942 | 0,500 | superestimado — risco real é moderado, não extremo |
-| 2205581 | 0,935 | 0,545 | superestimado |
-| 1717800 | 0,932 | 0,548 | superestimado |
-| 1718006 | 0,932 | 0,617 | superestimado, mas ainda o 2º maior risco real da lista |
+| 2919900 | 0,960 | 0,875 | boa concordância — risco alto confirmado |
+| 1718501 | 0,955 | 0,500 | superestimado — risco real é moderado, não extremo |
+| 2205581 | 0,946 | 0,545 | superestimado |
+| 2406908 | 0,945 | 0,571 | superestimado |
+| 1716307 | 0,942 | 0,621 | superestimado, mas ainda o maior risco real entre os quatro |
 
 Isso muda a leitura prática do ranking: o município 2919900 é o único, entre
 os cinco de maior risco *previsto*, onde a previsão e a realidade
@@ -439,17 +479,17 @@ A tabela de limiares (seção "Métricas de avaliação") existe justamente
 para dar ao gestor público — não ao modelo — o controle sobre um trade-off
 que é uma decisão de política, não uma decisão técnica:
 
-- **Limiar recall-prioritário (limiar escolhido para recall ≥ 80% na
-  validação):** aplicado ao teste-2024, captura ~80% dos alunos realmente
-  em risco (recall 79,6%), ao custo de uma precisão menor (46,1%) — ou
-  seja, entre os alunos sinalizados, mais da metade não estava de fato em
-  risco. Faz sentido quando o custo de "deixar passar" um caso real é alto
-  (ex.: uma política de reforço escolar barata e escalável, onde é
-  aceitável incluir alguns alunos que não precisariam).
-- **Limiar padrão (0,5):** um meio-termo (66,5% de recall, 48,3% de
+- **Limiar recall-prioritário (limiar escolhido para recall ≥ 80% em OOF
+  no pool de desenvolvimento):** aplicado ao teste-2024, captura ~80% dos
+  alunos realmente em risco (recall 79,9%), ao custo de uma precisão menor
+  (46,0%) — ou seja, entre os alunos sinalizados, mais da metade não
+  estava de fato em risco. Faz sentido quando o custo de "deixar passar"
+  um caso real é alto (ex.: uma política de reforço escolar barata e
+  escalável, onde é aceitável incluir alguns alunos que não precisariam).
+- **Limiar padrão (0,5):** um meio-termo (65,5% de recall, 48,4% de
   precisão em 2024).
 - **Limiar otimizado para F1:** maximiza o equilíbrio entre as duas
-  métricas (86,9% de recall, 44,5% de precisão em 2024) — captura quase
+  métricas (86,8% de recall, 44,5% de precisão em 2024) — captura quase
   todos os casos de risco, mas com a menor precisão das três opções.
 
 Em outras palavras: quanto mais o gestor prioriza **não deixar nenhum caso
@@ -479,11 +519,6 @@ política, não com o modelo.
   de investimento baseada nele deveria vir acompanhada dessa ressalva, ou
   de uma análise causal dedicada (ex.: pareamento, diferença-em-diferenças)
   antes de orientar decisão de recurso real.
-- **Clusterização regional completa** para responder de forma robusta
-  "quais regiões apresentam padrões semelhantes" — a EDA já indicou padrão
-  regional (Kruskal-Wallis), mas uma análise não-supervisionada dedicada
-  (ex.: k-means ou clusterização hierárquica sobre indicadores municipais)
-  daria uma resposta mais completa e seria um ciclo de trabalho próprio.
 - **Relatório de completude de cobertura territorial**, não mudar o
   fallback de ano: hoje a checagem de disponibilidade do ano anterior usa
   o mínimo global da tabela de território, não uma checagem por
@@ -517,8 +552,10 @@ política, não com o modelo.
 │   ├── modeling/         # treinamento e seleção de modelo
 │   ├── evaluation/       # métricas e validação
 │   └── visualization/    # gráficos e visualizações
-├── reports/              # relatórios e documentação de decisões
-├── images/               # imagens usadas em relatórios/README
+├── reports/              # documentação técnica, relatórios e apresentação
+│   ├── imagens/          # gráficos gerados pelos notebooks (.png)
+│   └── artefatos/        # modelo treinado (.joblib) e risco por município (.csv)
+├── images/               # imagens usadas no README
 ├── requirements.txt
 └── README.md
 ```
@@ -550,3 +587,7 @@ venv/bin/jupyter nbconvert --to notebook --execute \
 ## Vídeo executivo
 
 > _TODO: link do vídeo executivo (até 5 min)._
+
+Apoio para a gravação: [apresentação executiva](reports/apresentacao_executiva.html)
+(deck HTML navegável, tom de reunião executiva) e o roteiro de gravação em
+`ensinamentos/relatorio/roteiro-video-executivo.md`.
