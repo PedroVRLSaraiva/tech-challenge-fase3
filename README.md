@@ -586,8 +586,10 @@ venv/bin/jupyter nbconvert --to notebook --execute \
 
 ## Vídeo executivo
 
-> _TODO: link do vídeo executivo (até 5 min)._
+[Assista ao vídeo executivo](https://www.loom.com/share/11a41cb908db4ce59cea9dc8a22b84c9)
+(até 5 min) — problema, insights, valor estratégico e aplicação em
+políticas públicas, em tom de reunião executiva.
 
-Apoio para a gravação: [apresentação executiva](reports/apresentacao_executiva.html)
-(deck HTML navegável, tom de reunião executiva) e o roteiro de gravação em
+Apoio usado na gravação: [apresentação executiva](reports/apresentacao_executiva.html)
+(deck HTML navegável) e o roteiro em
 `ensinamentos/relatorio/roteiro-video-executivo.md`.
