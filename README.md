@@ -246,6 +246,18 @@ apenas individual. Rede de ensino (estadual vs. municipal) e a distância
 entre meta e resultado do município aparecem como fatores secundários, mas
 com peso bem menor.
 
+**Uma ressalva importante: preditivo não é o mesmo que acionável.** A
+feature dominante (`taxa_alfabetizacao_ano_anterior`) é excelente para
+*prever* — o passado se repete estatisticamente — mas é **passado**: não é
+algo que um gestor público consiga mudar para alterar o resultado futuro.
+Isso significa que a resposta "quais fatores mais afetam a alfabetização"
+funciona bem para a pergunta de **triagem** ("onde o risco está
+concentrado?"), mas ainda não responde bem a pergunta de **política**
+("o que fazer a respeito?") — porque a variável que mais pesa no modelo
+não é uma alavanca. Ver "Limitações do projeto" e "Aplicação prática para
+políticas públicas" para como essa distinção afeta o uso recomendado do
+modelo, e "Possíveis evoluções futuras" para quais dados resolveriam isso.
+
 ## Insights encontrados
 
 **1. Existe um gap real de generalização temporal.** O ROC-AUC cai de
@@ -298,6 +310,17 @@ fallback) deixa de valer em 2024.
 
 ## Limitações do projeto
 
+- **A capacidade de discriminação do modelo é fraca-a-moderada, não alta.**
+  ROC-AUC de 0,64-0,69 fica abaixo do patamar geralmente considerado
+  aceitável para decisão individual de alto risco (como referência
+  informal: ~0,5 é equivalente a sorteio, 0,7-0,8 é considerado aceitável
+  na prática, 0,8+ é bom). Isso não significa que o modelo seja inútil —
+  ele discrimina bem mais que aleatório, e é útil para *ranquear* risco
+  relativo — mas significa que, hoje, ele **não deveria ser usado para
+  decisões individuais de alto risco ou para alocar recurso de forma fina
+  com base no valor numérico da probabilidade**. Uso recomendado atual:
+  priorização relativa entre municípios (uma lista ordenada), não um
+  veredito individual sobre um aluno específico.
 - **A Gold só tem 2 anos de dado (2023 e 2024).** Isso limita a validação
   temporal a uma única fronteira (treinar em 2023, testar em 2024) — não é
   possível confirmar se o gap de generalização observado é um padrão
@@ -347,12 +370,41 @@ fallback) deixa de valer em 2024.
   modelo — comparar quem está em risco relativo a quem — mas o **valor
   numérico** da probabilidade não deve ser lido como uma estimativa
   calibrada de frequência real nesse ano específico.
+- **A feature mais importante é preditiva, mas não é acionável.**
+  `taxa_alfabetizacao_ano_anterior` (0,562 de importância, mais da metade
+  do total) é o histórico do próprio município — excelente para prever
+  (o passado se repete estatisticamente), mas não é algo que um gestor
+  público consiga mudar para alterar o resultado futuro. Isso limita o
+  valor prático da resposta à pergunta de negócio "quais fatores mais
+  afetam a alfabetização": o modelo responde bem a uma pergunta de
+  **triagem** ("onde o risco está concentrado?"), mas não a uma pergunta
+  de **política** ("o que fazer a respeito?") — porque a variável que mais
+  pesa na decisão do modelo não é uma alavanca de intervenção. As demais
+  features (rede, região, gap meta-resultado) são secundárias em peso e
+  também majoritariamente estruturais, não alavancas diretas de política
+  de curto prazo. Ver "Aplicação prática para políticas públicas" para
+  como essa distinção deveria orientar o uso do modelo, e "Possíveis
+  evoluções futuras" para quais dados resolveriam essa lacuna.
 
 ## Aplicação prática para políticas públicas
 
+Vale separar duas perguntas que este modelo responde de forma bem
+diferente: **"onde agir"** (triagem/priorização) e **"o que fazer"**
+(alavanca de política). O modelo é útil para a primeira — é exatamente
+para isso que o ranking de risco por município serve. Ele **não** responde
+bem a segunda: como discutido em "Interpretação dos resultados" e
+"Limitações do projeto", a variável que mais pesa nas previsões
+(histórico municipal) não é algo que um gestor consiga mudar. Nenhuma
+recomendação de tipo de intervenção ("investir em professores", "reforçar
+frequência") deveria ser derivada diretamente da importância de features
+deste modelo — isso exigiria dados sobre alavancas reais (investimento,
+infraestrutura, formação docente) que este projeto não incorporou nesta
+rodada (ver "Possíveis evoluções futuras").
+
 O modelo permite estimar, para cada aluno, uma probabilidade de risco de
 não alfabetização — e, agregando essas probabilidades por município, gerar
-um **ranking de municípios prioritários** para ação. A tabela completa
+um **ranking de municípios prioritários** para ação (a pergunta "onde
+agir", não "o que fazer"). A tabela completa
 está em [`reports/risco_por_municipio_2024.csv`](reports/risco_por_municipio_2024.csv),
 e — por causa da descalibração encontrada na seção "Comparação real vs.
 previsto" — ela traz o risco **previsto** e o risco **real observado**
@@ -374,11 +426,14 @@ gestor que for usar esse ranking para alocar recursos deve tratar a coluna
 `risco_previsto` como um **ordenador** (quem priorizar primeiro), e
 conferir a coluna `risco_real` — quando disponível, como neste caso
 retrospectivo de 2024 — antes de dimensionar o tamanho da intervenção.
-Esse tipo de ranking ainda é diretamente acionável: em vez de distribuir
-recursos (formação de professores, material didático, reforço escolar) de
-forma uniforme entre todos os municípios, um gestor estadual ou federal
-pode priorizar onde o modelo indica maior concentração de risco relativo —
-com a ressalva de calibração acima.
+Esse tipo de ranking ainda é diretamente acionável **para a decisão de
+onde priorizar**: em vez de distribuir recursos de forma uniforme entre
+todos os municípios, um gestor estadual ou federal pode direcionar atenção
+primeiro para onde o modelo indica maior concentração de risco relativo —
+com a ressalva de calibração acima. A decisão de **qual** recurso mandar
+(formação de professores, material didático, reforço escolar) não deveria
+vir do modelo — ele não tem informação sobre o que causa o risco, só sobre
+onde ele está.
 
 A tabela de limiares (seção "Métricas de avaliação") existe justamente
 para dar ao gestor público — não ao modelo — o controle sobre um trade-off
@@ -407,9 +462,23 @@ política, não com o modelo.
 
 ## Possíveis evoluções futuras
 
-- **Incorporar fontes externas** (IBGE, Censo Escolar, FUNDEB, PNAD, Atlas
-  do Desenvolvimento Humano) para capturar fatores socioeconômicos e de
-  investimento que o território histórico, sozinho, não representa.
+- **Incorporar fontes externas que sejam alavancas de política, não só
+  sinal preditivo.** Nem toda fonte externa resolve a limitação de
+  acionabilidade discutida acima: renda familiar (PNAD), IDHM (Atlas do
+  Desenvolvimento Humano) e região geográfica (IBGE) são, na prática, tão
+  estruturais/não-acionáveis no curto prazo quanto o histórico municipal —
+  melhorariam a discriminação do modelo, mas não a utilidade para
+  responder "o que fazer". As fontes que de fato representariam uma
+  alavanca de decisão pública são **Censo Escolar** (alunos por turma,
+  formação e quantidade de professores, infraestrutura escolar) e
+  **FUNDEB** (investimento por aluno) — dados sobre o que um governo pode
+  literalmente aumentar, treinar ou construir. Mesmo com esses dados,
+  qualquer relação encontrada (ex.: "mais professores formados → menos
+  risco") continuaria sendo **correlação observacional**, não causa
+  comprovada — o modelo não faz inferência causal, então uma recomendação
+  de investimento baseada nele deveria vir acompanhada dessa ressalva, ou
+  de uma análise causal dedicada (ex.: pareamento, diferença-em-diferenças)
+  antes de orientar decisão de recurso real.
 - **Clusterização regional completa** para responder de forma robusta
   "quais regiões apresentam padrões semelhantes" — a EDA já indicou padrão
   regional (Kruskal-Wallis), mas uma análise não-supervisionada dedicada
