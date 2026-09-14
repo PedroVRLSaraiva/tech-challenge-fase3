@@ -5,7 +5,9 @@ matplotlib.use("Agg")  # evita exigir display gráfico em teste/CI
 
 import matplotlib.pyplot as plt
 import numpy as np
+from sklearn.decomposition import PCA
 from sklearn.metrics import precision_recall_curve
+from sklearn.preprocessing import StandardScaler
 
 
 def plot_curva_precisao_recall(pipeline, X, y):
@@ -53,5 +55,38 @@ def plot_calibracao(tabela_calibracao):
     eixo.set_ylabel("Taxa real observada")
     eixo.set_title("Curva de calibração (2024)")
     eixo.legend()
+    fig.tight_layout()
+    return fig
+
+
+def plot_clusters_municipios(clusters, colunas_features):
+    """Projeta os indicadores (>=2 dimensões) em 2D via PCA só para permitir
+    visualização — a clusterização em si roda no espaço original das
+    features, não nesse espaço reduzido. Cor = cluster (k-means), marcador =
+    região oficial: se cor e marcador aparecerem misturados no gráfico, os
+    clusters cortam fronteiras regionais; se cada região virar um bloco de
+    uma cor só, clusters e região coincidem."""
+    X_escalado = StandardScaler().fit_transform(clusters[colunas_features])
+    coordenadas = PCA(n_components=2, random_state=42).fit_transform(X_escalado)
+
+    clusters = clusters.copy()
+    clusters["_pca1"] = coordenadas[:, 0]
+    clusters["_pca2"] = coordenadas[:, 1]
+
+    marcadores_disponiveis = ["o", "s", "^", "D", "P", "X", "v", "*"]
+    regioes = sorted(clusters["regiao"].unique())
+    mapa_marcador = {regiao: marcadores_disponiveis[i % len(marcadores_disponiveis)] for i, regiao in enumerate(regioes)}
+
+    fig, eixo = plt.subplots(figsize=(7, 6))
+    for regiao, grupo in clusters.groupby("regiao"):
+        eixo.scatter(
+            grupo["_pca1"], grupo["_pca2"], c=grupo["cluster"], cmap="tab10",
+            vmin=clusters["cluster"].min(), vmax=clusters["cluster"].max(),
+            marker=mapa_marcador[regiao], label=regiao, edgecolor="black", linewidth=0.3,
+        )
+    eixo.set_xlabel("Componente principal 1")
+    eixo.set_ylabel("Componente principal 2")
+    eixo.set_title("Clusters de municípios (cor) vs. região oficial (marcador)")
+    eixo.legend(title="Região", loc="best", fontsize=8)
     fig.tight_layout()
     return fig

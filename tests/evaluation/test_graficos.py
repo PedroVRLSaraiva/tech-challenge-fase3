@@ -5,6 +5,7 @@ import pandas as pd
 
 from src.visualization.graficos import (
     plot_calibracao,
+    plot_clusters_municipios,
     plot_curva_precisao_recall,
     plot_importancia_features,
 )
@@ -65,4 +66,25 @@ def test_plot_calibracao_retorna_figure_com_uma_linha_por_faixa():
     eixo = fig.axes[0]
     # uma linha de calibração (dados) + uma linha de referência diagonal
     assert len(eixo.lines) >= 2
+    plt.close(fig)
+
+
+def test_plot_clusters_municipios_retorna_figure_com_um_ponto_por_municipio():
+    colunas = ["taxa_alfabetizacao", "gap_meta_resultado", "meta_alfabetizacao_2024"]
+    clusters = pd.DataFrame({
+        "id_municipio": ["a", "b", "c", "d"],
+        "regiao": ["Sul", "Sul", "Norte", "Norte"],
+        "cluster": [0, 0, 1, 1],
+        "taxa_alfabetizacao": [0.8, 0.82, 0.3, 0.28],
+        "gap_meta_resultado": [0.1, 0.12, 0.4, 0.42],
+        "meta_alfabetizacao_2024": [0.9, 0.9, 0.5, 0.5],
+    })
+
+    fig = plot_clusters_municipios(clusters, colunas_features=colunas)
+
+    assert isinstance(fig, matplotlib.figure.Figure)
+    eixo = fig.axes[0]
+    # cada marcador de região é um scatter/PathCollection separado
+    total_pontos = sum(len(colecao.get_offsets()) for colecao in eixo.collections)
+    assert total_pontos == len(clusters)
     plt.close(fig)
