@@ -21,3 +21,4 @@ venv/
 # Dados grandes/sensíveis (ajustar conforme necessário)
 data/*
 !data/.gitkeep
+.gstack/
